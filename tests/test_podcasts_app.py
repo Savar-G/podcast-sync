@@ -91,6 +91,78 @@ class RefreshTest(unittest.TestCase):
         self.assertLessEqual(clock.t - 1000, 1.0)
 
 
+class WarmTest(unittest.TestCase):
+    def test_warm_launches_and_waits_for_the_sync(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, writes_at=(0.9, 1.9)))
+        self.assertTrue(app.warm())
+        self.assertEqual(state["launches"], 1)
+        self.assertAlmostEqual(clock.t - 1000, 3.5, delta=0.3)
+
+    def test_refresh_after_warm_is_instant_and_does_not_launch_again(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, writes_at=(0.9, 1.9)))
+        app.warm()
+        clock.t += 20  # you browse YouTube for a while, then open an episode
+        t = clock.t
+        app.refresh(1)
+        self.assertEqual(clock.t, t)
+        self.assertEqual(state["launches"], 1)
+
+    def test_refresh_waits_normally_once_the_warm_sync_is_old(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, writes_at=(0.9, 1.9)))
+        app.warm()
+        clock.t += 120
+        t = clock.t
+        app.refresh(1)
+        self.assertAlmostEqual(clock.t - t, 1.0, delta=0.3)
+        self.assertEqual(state["launches"], 1)
+
+    def test_refresh_during_warm_waits_for_that_sync_instead_of_launching(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, writes_at=(0.9, 1.9)), running=True)
+        app._warming = True  # warm() launched it a moment ago and is still syncing
+        app._launched_by_us = True
+        sleep = clock.sleep
+
+        def sleep_then_finish(s):  # the warm thread finishes 2 s into this refresh
+            sleep(s)
+            if clock.t - 1000 >= 2.0:
+                app._warming = False
+
+        app._sleep = sleep_then_finish
+        app.refresh(1)
+        self.assertEqual(state["launches"], 0)
+        self.assertAlmostEqual(clock.t - 1000, 2.0, delta=0.3)
+
+    def test_refresh_during_warm_returns_as_soon_as_the_position_arrives(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, row_change_at=0.6), running=True)
+        app._warming = True
+        ep = app.refresh(1)
+        self.assertEqual(ep.playhead, 2430.0)
+        self.assertLessEqual(clock.t - 1000, 0.8)
+
+    def test_warm_does_nothing_if_podcasts_already_runs(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock), running=True)
+        self.assertFalse(app.warm())
+        self.assertEqual(state["launches"], 0)
+        clock.t += 1000
+        self.assertFalse(app.quit_if_idle())  # not ours: never quit it
+
+    def test_app_warmed_by_us_is_quit_after_idle(self):
+        clock = Clock()
+        app, state = make(clock, ScriptedDB(clock, writes_at=(0.5,)))
+        app.warm()
+        clock.t += 100
+        self.assertFalse(app.quit_if_idle())
+        clock.t += 100
+        self.assertTrue(app.quit_if_idle())
+        self.assertEqual(state["quits"], 1)
+
+
 class IdleQuitTest(unittest.TestCase):
     def test_quits_only_what_it_launched_after_idle(self):
         clock = Clock()

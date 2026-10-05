@@ -21,6 +21,8 @@ const shots = process.env.SHOTS || tmpdir();
 const handoff =
   process.env.HANDOFF ||
   path.join(homedir(), 'Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/podcast-sync/resume.json');
+const helperLog = process.env.HELPER_LOG || '';
+const readLog = () => (helperLog ? readFileSync(helperLog, 'utf8') : '');
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -38,6 +40,20 @@ const ctx = await chromium.launchPersistentContext(mkdtempSync(path.join(tmpdir(
 try {
   const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent('serviceworker', { timeout: 15000 }));
   check('extension loaded', !!sw, sw?.url());
+  // Time every helper request the extension makes (the service worker does the fetch).
+  await sw.evaluate(() => {
+    const f = self.fetch.bind(self);
+    self.__podsyncTimes = [];
+    self.fetch = async (url, opts) => {
+      const t = performance.now();
+      try {
+        return await f(url, opts);
+      } finally {
+        self.__podsyncTimes.push({ path: new URL(String(url)).pathname, ms: Math.round(performance.now() - t) });
+      }
+    };
+  });
+  const helperTimes = (p) => sw.evaluate((p) => self.__podsyncTimes.filter((t) => t.path === p).map((t) => t.ms), p).catch(() => []);
 
   const page = await ctx.newPage();
   const toasts = [];
@@ -45,6 +61,19 @@ try {
     const t = await page.evaluate(() => document.querySelector('.podsync-toast.podsync-show')?.textContent || '').catch(() => '');
     if (t && toasts[toasts.length - 1] !== t) toasts.push(t);
   }, 150);
+  // Logged-out YouTube may show an ad first. Skip it like a person would, so the test does not wait on it.
+  const skipAds = setInterval(() => {
+    page
+      .locator('.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button')
+      .first()
+      .click({ timeout: 300 })
+      .catch(() => {});
+  }, 1000);
+
+  // 0. You open YouTube. The helper starts Podcasts hidden, so the iCloud sync runs while you browse.
+  await page.goto('https://www.youtube.com/', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(5000);
+  check('opening YouTube warmed up Apple Podcasts', /warming: launching Podcasts hidden/.test(readLog()), helperLog ? '' : 'set HELPER_LOG');
 
   // 1. Apple Podcasts -> YouTube
   const t0 = Date.now();
@@ -66,6 +95,11 @@ try {
   await page.waitForTimeout(600);
   await page.screenshot({ path: path.join(shots, 'e2e-1-resumed.png') });
   check('toast said where it resumed', toasts.some((t) => /Resumed at .* from Apple Podcasts/.test(t)), JSON.stringify(toasts));
+  const [resumeMs] = await helperTimes('/resume');
+  const [matchMs] = await helperTimes('/match');
+  console.log(`TIMING  open-to-jump=${secs}s  /match=${matchMs}ms  /resume=${resumeMs}ms`);
+  check('resume after a warm-up is fast', resumeMs != null && resumeMs < 600, `/resume took ${resumeMs} ms`);
+  check('no "Checking" toast when the resume is fast', !toasts.some((t) => /Checking Apple Podcasts/.test(t)), JSON.stringify(toasts));
 
   // 2. YouTube -> Apple Podcasts: watch a bit further, then pause
   await page.evaluate(async () => {
@@ -81,17 +115,23 @@ try {
     else v.pause();
     return v.currentTime;
   });
-  await page.waitForFunction(() => /Ready on iPhone/.test(document.querySelector('.podsync-toast')?.textContent || ''), null, {
-    timeout: 15000,
-  }).catch(() => null);
+  const readyToast = await page
+    .waitForFunction(() => /Ready on iPhone/.test(document.querySelector('.podsync-toast')?.textContent || ''), null, {
+      timeout: 15000,
+    })
+    .then(() => true)
+    .catch(() => false);
   await page.screenshot({ path: path.join(shots, 'e2e-2-paused.png') });
-  const info = JSON.parse(readFileSync(handoff, 'utf8'));
+  let info = { seconds: NaN, url: '(no file)' };
+  try {
+    info = JSON.parse(readFileSync(handoff, 'utf8'));
+  } catch {}
   check(
     'pause wrote the iPhone link',
     Math.abs(info.seconds - pausedAt) <= 2 && info.url.includes('&t='),
     `${info.url} (paused at ${pausedAt.toFixed(1)})`
   );
-  check('toast confirmed the handoff', toasts.some((t) => /Ready on iPhone at/.test(t)));
+  check('toast confirmed the handoff', readyToast || toasts.some((t) => /Ready on iPhone at/.test(t)));
 
   // 3. Reload: YouTube is now newer than Apple Podcasts, so nothing should jump
   toasts.length = 0;
@@ -101,6 +141,7 @@ try {
   check('newer YouTube position is not overwritten', !toasts.some((t) => /Resumed/.test(t)), `currentTime=${after.toFixed(1)}, toasts=${JSON.stringify(toasts)}`);
 
   clearInterval(pollToasts);
+  clearInterval(skipAds);
 } finally {
   await ctx.close();
 }

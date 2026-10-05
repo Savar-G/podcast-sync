@@ -4,6 +4,8 @@
 (() => {
   const HEARTBEAT_MS = 15000;
   const MIN_JUMP = 15;
+  const WARM_EVERY_MS = 5 * 60 * 1000; // across all tabs
+  const BUSY_TOAST_MS = 600; // show "Checking…" only if the resume is slower than this
   const state = { videoId: null, token: 0, resolving: false, lastBeat: 0 };
   const bound = new WeakSet();
 
@@ -37,6 +39,19 @@
       };
       tick();
     });
+  }
+
+  // Start Apple Podcasts (hidden) now, so its iCloud sync is done before you pick a video.
+  function warm() {
+    try {
+      chrome.storage.local.get('warmAt', ({ warmAt } = {}) => {
+        if (chrome.runtime.lastError || Date.now() - (warmAt || 0) < WARM_EVERY_MS) return;
+        chrome.storage.local.set({ warmAt: Date.now() });
+        ask('warm', {});
+      });
+    } catch {
+      // extension reloaded: this old content script can no longer talk to it
+    }
   }
 
   // ---- toast ---------------------------------------------------------------
@@ -125,8 +140,9 @@
       const m = await ask('match', { videoId: id, currentTime: 0, title: title() });
       if (token !== state.token || !m?.matched) return;
 
-      toast('Checking Apple Podcasts…', { ms: 0, busy: true });
+      const busy = setTimeout(() => token === state.token && toast('Checking Apple Podcasts…', { ms: 0, busy: true }), BUSY_TOAST_MS);
       const r = await ask('resume', { videoId: id, currentTime: video()?.currentTime || 0, title: title() });
+      clearTimeout(busy);
       if (token !== state.token) return;
       if (r?.action !== 'seek') return hideToast();
 
@@ -151,7 +167,10 @@
     }
   }
 
-  document.addEventListener('yt-navigate-start', () => report('navigate'));
+  document.addEventListener('yt-navigate-start', () => {
+    report('navigate');
+    warm();
+  });
   document.addEventListener('yt-navigate-finish', onPage);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && report('hidden'));
   window.addEventListener('pagehide', () => report('unload'));
@@ -160,5 +179,6 @@
     if (watchId() !== state.videoId) onPage();
   }, 1000);
   bind(video());
+  warm();
   onPage();
 })();

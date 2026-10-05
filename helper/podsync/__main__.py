@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 
 from . import config
-from .podcasts_app import PodcastsApp, StaticApp
+from .podcasts_app import PodcastsApp, SimulatedPodcasts
 from .podcasts_db import JsonLibrary, PodcastsDB
 from .server import serve
 from .service import SyncService
@@ -37,9 +37,11 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s", stream=sys.stderr)
     cfg = config.load()
     fake = os.environ.get("PODSYNC_FAKE_LIBRARY")
-    if fake:  # end-to-end tests: a JSON library, and never touch the Podcasts app
+    if fake:  # end-to-end tests: a JSON library and a pretend Podcasts app (never the real one)
         db = JsonLibrary(Path(fake))
-        app = StaticApp(db)
+        sim = SimulatedPodcasts()
+        db.activity = sim.activity
+        app = PodcastsApp(db, cfg.podcasts_idle_quit_seconds, running=sim.running, launch=sim.launch, quit=sim.quit, hidden=sim.hidden)
         logging.warning("using fake library %s", fake)
     else:
         db = PodcastsDB(cfg.db_path)
