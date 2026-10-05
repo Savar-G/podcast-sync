@@ -1,7 +1,8 @@
-// Runs on youtube.com. Three jobs:
+// Runs on youtube.com. Four jobs:
 //  1. When a matched episode opens, jump to where Apple Podcasts left off (if that is newer).
 //  2. Mark the iPhone position on the progress bar ("iPhone was here").
 //  3. While you watch, report the position so the helper can hand it to your iPhone.
+//  4. Show Apple Podcasts progress on the thumbnails of episodes you started.
 (() => {
   const HEARTBEAT_MS = 15000;
   const MIN_JUMP = 15;
@@ -384,9 +385,106 @@
     }
   }
 
+  // ---- Apple Podcasts progress on thumbnails ---------------------------------
+  // Old layout: <ytd-thumbnail><a id="thumbnail" href="/watch?v=…">. New layout:
+  // <a href="/watch?v=…"><yt-thumbnail-view-model>. The helper answers only for videos it
+  // matched before, from the Mac library (no network), so asking is cheap.
+  const THUMBS = 'ytd-thumbnail, yt-thumbnail-view-model';
+  const KNOWN_BATCH = 60;
+  const known = new Map(); // videoId -> {fraction, label} | null, for this page
+  const asking = new Set();
+  let thumbTimer = 0;
+  let thumbPage = 0; // drops answers that arrive after a navigation
+
+  function thumbTarget(el) {
+    const old = el.localName === 'ytd-thumbnail';
+    const a = old ? el.querySelector('a#thumbnail') : el.closest('a');
+    const href = a?.getAttribute('href') || '';
+    if (!href.startsWith('/watch?')) return null; // shorts, ads, playlists
+    const id = new URLSearchParams(href.slice(7)).get('v');
+    return id && /^[\w-]{11}$/.test(id) ? { id, host: old ? a : el } : null;
+  }
+
+  function paintThumb(host, id) {
+    let bar = host.querySelector(':scope > .podsync-thumb');
+    if (!known.has(id)) {
+      if (bar && bar.dataset.id !== id) bar.remove(); // recycled for another video; keep ours until we know
+      return;
+    }
+    const data = known.get(id);
+    if (!data) return bar?.remove();
+    const text = `Apple Podcasts: ${data.label}`;
+    if (bar?.dataset.id === id && bar.title === text) return; // nothing changed: no DOM write
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'podsync-thumb';
+      bar.setAttribute('role', 'img');
+      bar.append(Object.assign(document.createElement('div'), { className: 'podsync-thumb-fill' }));
+      host.append(bar);
+    }
+    bar.dataset.id = id;
+    bar.title = text;
+    bar.setAttribute('aria-label', text);
+    bar.firstChild.style.width = `${Math.max(2, Math.min(100, data.fraction * 100))}%`;
+  }
+
+  async function askKnown(ids, page) {
+    for (const id of ids) asking.add(id);
+    const r = await ask('known', { videoIds: ids });
+    for (const id of ids) asking.delete(id);
+    if (page !== thumbPage) return;
+    const ok = r && !r.error;
+    for (const id of ids) known.set(id, ok ? r[id] || null : null);
+    if (ok && ids.some((id) => r[id])) scanThumbs();
+  }
+
+  // Reads first (selectors, attributes), then the few writes. No layout reads.
+  function scanThumbs() {
+    clearTimeout(thumbTimer);
+    thumbTimer = 0;
+    const found = [];
+    for (const el of document.querySelectorAll(THUMBS)) {
+      const t = thumbTarget(el);
+      if (t) found.push(t);
+    }
+    const missing = [...new Set(found.map((t) => t.id))].filter((id) => !known.has(id) && !asking.has(id));
+    for (let i = 0; i < missing.length; i += KNOWN_BATCH) askKnown(missing.slice(i, i + KNOWN_BATCH), thumbPage);
+    for (const t of found) paintThumb(t.host, t.id);
+  }
+
+  // At most one scan per 400 ms, and only when thumbnails were added or changed.
+  function scheduleThumbs() {
+    if (!thumbTimer) thumbTimer = setTimeout(scanThumbs, 400);
+  }
+
+  function touchesThumbs(records) {
+    for (const r of records) {
+      if (r.type === 'attributes') {
+        if (r.target.closest('ytd-thumbnail') || r.target.querySelector?.('yt-thumbnail-view-model')) return true;
+        continue;
+      }
+      for (const n of r.addedNodes) {
+        if (n.nodeType === 1 && (n.matches(THUMBS) || n.querySelector(THUMBS))) return true;
+      }
+    }
+    return false;
+  }
+
+  new MutationObserver((records) => !thumbTimer && touchesThumbs(records) && scheduleThumbs()).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['href'],
+  });
+
   document.addEventListener('yt-navigate-start', () => {
     report('navigate');
     warm();
+  });
+  document.addEventListener('yt-navigate-finish', () => {
+    known.clear(); // fresh positions for each page
+    thumbPage++;
+    scheduleThumbs();
   });
   document.addEventListener('yt-navigate-finish', onPage);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && report('hidden'));
@@ -399,4 +497,5 @@
   bind(video());
   warm();
   onPage();
+  scheduleThumbs();
 })();

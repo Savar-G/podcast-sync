@@ -116,7 +116,11 @@ try {
       try {
         return await f(url, opts);
       } finally {
-        self.__podsyncTimes.push({ path: new URL(String(url)).pathname, ms: Math.round(performance.now() - t) });
+        let ids = null;
+        try {
+          ids = JSON.parse(opts?.body || 'null')?.videoIds?.length ?? null;
+        } catch {}
+        self.__podsyncTimes.push({ path: new URL(String(url)).pathname, ms: Math.round(performance.now() - t), ids });
       }
     };
   });
@@ -408,6 +412,57 @@ try {
     .then(() => true)
     .catch(() => false);
   check('the next jump uses the learned offset', jumpedNudged && (await nearTime(page, 3315, 2)), `currentTime=${(await currentTime(page)).toFixed(1)}`);
+
+  // 6. Thumbnails: a purple bar on episodes you started in Apple Podcasts (55:00 of 1:02:09 now).
+  const thumbOf = (id) =>
+    page.evaluate((id) => {
+      const bars = [...document.querySelectorAll('.podsync-thumb')];
+      const b = bars.find((x) => x.dataset.id === id);
+      if (!b) return { count: bars.length };
+      // Fake YouTube's red "watched" bar next to ours: ours must move up and stay clear of it.
+      const red = document.createElement(b.parentElement.localName === 'yt-thumbnail-view-model' ? 'yt-thumbnail-overlay-progress-bar-view-model' : 'ytd-thumbnail-overlay-resume-playback-renderer');
+      red.style.cssText = 'position:absolute;left:0;bottom:0;height:4px;width:30%;background:#f00;display:block';
+      const bottomAlone = getComputedStyle(b).bottom;
+      b.parentElement.append(red);
+      const bottomWithRed = getComputedStyle(b).bottom;
+      red.remove();
+      const fill = b.firstElementChild.getBoundingClientRect().width / b.getBoundingClientRect().width;
+      return {
+        count: bars.length,
+        others: bars.filter((x) => x.dataset.id !== id).length,
+        host: b.parentElement.localName,
+        label: b.getAttribute('aria-label'),
+        title: b.title,
+        fill: Math.round(fill * 1000) / 1000,
+        color: getComputedStyle(b.firstElementChild).backgroundColor,
+        bottomAlone,
+        bottomWithRed,
+      };
+    }, id);
+  const waitThumb = (id) =>
+    page.waitForFunction((id) => [...document.querySelectorAll('.podsync-thumb')].some((x) => x.dataset.id === id), id, { timeout: 20000 }).catch(() => {});
+  const wantFill = 3300 / 3729;
+  for (const [name, url] of [
+    ['search', `https://www.youtube.com/results?search_query=${encodeURIComponent('David Senra Alexander Taubman Long Lake')}`],
+    ['channel', 'https://www.youtube.com/@DavidSenra/videos'],
+  ]) {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await waitThumb(videoId);
+    const th = await thumbOf(videoId);
+    await page.screenshot({ path: path.join(shots, `e2e-6-thumbnails-${name}.png`) });
+    check(
+      `${name} page: purple bar on the started episode only`,
+      th.label === 'Apple Podcasts: 55:00 of 1:02:09' && th.title === th.label && Math.abs(th.fill - wantFill) < 0.02 && th.others === 0 && th.color === 'rgb(177, 80, 226)',
+      JSON.stringify(th)
+    );
+    check(`${name} page: it stacks above YouTube's red bar`, th.bottomAlone === '0px' && th.bottomWithRed === '4px', `${th.host}: ${th.bottomAlone} -> ${th.bottomWithRed}`);
+  }
+  const knownCalls = await sw.evaluate(() => self.__podsyncTimes.filter((t) => t.path === '/known'));
+  check(
+    'thumbnails are asked in batches of at most 60, and fast',
+    knownCalls.length > 0 && knownCalls.every((c) => c.ids > 0 && c.ids <= 60 && c.ms < 500),
+    `${knownCalls.length} calls: ${knownCalls.map((c) => `${c.ids} ids/${c.ms} ms`).join(', ')}`
+  );
 
   clearInterval(pollToasts);
   clearInterval(skipAds);
