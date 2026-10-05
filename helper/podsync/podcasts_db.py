@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -33,6 +34,7 @@ class Episode:
     pub_date: Optional[float]  # unix seconds
     playhead: float
     last_played: Optional[float]  # unix seconds
+    artwork: Optional[str] = None  # Apple image template URL, only from recently_played()
 
     @classmethod
     def from_row(cls, r) -> "Episode":
@@ -48,7 +50,21 @@ class Episode:
             pub_date=unix(r[5]),
             playhead=float(r[6] or 0),
             last_played=unix(r[7]),
+            artwork=(r[8] or None) if len(r) > 8 else None,
         )
+
+
+def in_progress(ep: Episode, since: float, min_playhead: float = 60, end_margin: float = 60) -> bool:
+    """Played after `since`, started, and not (almost) finished."""
+    if not ep.track_id or not ep.last_played or ep.last_played < since or ep.playhead < min_playhead:
+        return False
+    return not (ep.duration and ep.playhead > ep.duration - end_margin)
+
+
+def _newest_in_progress(eps: Iterable[Episode], since: float, min_playhead: float, end_margin: float, limit: int) -> List[Episode]:
+    eps = [e for e in eps if in_progress(e, since, min_playhead, end_margin)]
+    eps.sort(key=lambda e: e.last_played or 0, reverse=True)
+    return eps[:limit]
 
 
 def _try_open(path: Path) -> str:
@@ -118,6 +134,20 @@ class PodcastsDB:
             row = c.execute(sql, (int(track_id),)).fetchone()
         return Episode.from_row(row) if row else None
 
+    def recently_played(self, since: float, min_playhead: float = 60, end_margin: float = 60, limit: int = 5) -> List[Episode]:
+        """Episodes played after `since` (unix) that are started but not finished, newest first."""
+        where = """FROM ZMTEPISODE e JOIN ZMTPODCAST p ON e.ZPODCAST = p.Z_PK
+                   WHERE e.ZSTORETRACKID > 0 AND e.ZLASTDATEPLAYED > ? AND e.ZPLAYHEAD >= ?
+                   ORDER BY e.ZLASTDATEPLAYED DESC LIMIT 200"""
+        args = (since - APPLE_EPOCH, min_playhead)
+        with closing(self._connect()) as c:
+            try:  # artwork columns are not in every macOS version of the library
+                art = "COALESCE(e.ZARTWORKTEMPLATEURL, p.ZARTWORKTEMPLATEURL)"
+                rows = c.execute(f"SELECT {_COLUMNS}, {art} {where}", args).fetchall()
+            except sqlite3.OperationalError:
+                rows = c.execute(f"SELECT {_COLUMNS} {where}", args).fetchall()
+        return _newest_in_progress(map(Episode.from_row, rows), since, min_playhead, end_margin, limit)
+
 
 class JsonLibrary:
     """Stand-in for the Podcasts library, loaded from a JSON list of episodes.
@@ -154,3 +184,6 @@ class JsonLibrary:
 
     def episode(self, track_id: int) -> Optional[Episode]:
         return self.rows.get(track_id)
+
+    def recently_played(self, since: float, min_playhead: float = 60, end_margin: float = 60, limit: int = 5) -> List[Episode]:
+        return _newest_in_progress(self.rows.values(), since, min_playhead, end_margin, limit)

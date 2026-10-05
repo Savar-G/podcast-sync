@@ -1,34 +1,152 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <title>Podcast Sync</title>
     <style>
-      body {
-        width: 280px;
-        margin: 0;
-        padding: 14px 16px;
-        font: 13px/1.45 system-ui, -apple-system, sans-serif;
-        color: #1d1d1f;
-        background: #fff;
+      :root {
+        color-scheme: light dark;
+        --text: #1d1d1f;
+        --muted: #6e6e73;
+        --bg: #fff;
+        --hairline: rgba(0, 0, 0, 0.1);
+        --fill: rgba(0, 0, 0, 0.06);
+        --skeleton: rgba(0, 0, 0, 0.07);
+        --skeleton-hi: rgba(0, 0, 0, 0.03);
+        --purple: #b150e2; /* Apple Podcasts */
+        --tint-bg: rgba(177, 80, 226, 0.12);
+        --tint-bg-hover: rgba(177, 80, 226, 0.2);
+        --tint-text: #8a2fbf;
+        --neutral-bg: rgba(0, 0, 0, 0.06);
+        --neutral-bg-hover: rgba(0, 0, 0, 0.1);
+        --focus: #8a2fbf;
       }
       @media (prefers-color-scheme: dark) {
-        body { color: #f5f5f7; background: #1c1c1e; }
-        .muted { color: #98989d !important; }
+        :root {
+          --text: #f5f5f7;
+          --muted: #98989d;
+          --bg: #1c1c1e;
+          --hairline: rgba(255, 255, 255, 0.12);
+          --fill: rgba(255, 255, 255, 0.14);
+          --skeleton: rgba(255, 255, 255, 0.09);
+          --skeleton-hi: rgba(255, 255, 255, 0.04);
+          --tint-bg: rgba(177, 80, 226, 0.26);
+          --tint-bg-hover: rgba(177, 80, 226, 0.36);
+          --tint-text: #e3b8f8;
+          --neutral-bg: rgba(255, 255, 255, 0.1);
+          --neutral-bg-hover: rgba(255, 255, 255, 0.16);
+          --focus: #d39bf3;
+        }
       }
-      h1 { font-size: 14px; margin: 0 0 10px; }
+      body {
+        width: 340px;
+        margin: 0;
+        padding: 14px 16px 12px;
+        font: 13px/1.45 system-ui, -apple-system, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        -webkit-font-smoothing: antialiased;
+      }
+      h1 { font-size: 14px; margin: 0 0 8px; }
       .row { display: flex; align-items: center; gap: 8px; }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
+      .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
       .ok .dot { background: #30d158; }
       .bad .dot { background: #ff453a; }
-      .muted { color: #6e6e73; }
-      .last { margin-top: 12px; }
+      .muted { color: var(--muted); }
+      .last { margin-top: 6px; }
+      .last:empty { display: none; }
       .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+      .sr-only {
+        position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+      }
+
+      /* Continue on YouTube */
+      #continue { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+      .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
+      h2 { font-size: 13px; font-weight: 600; margin: 0; }
+      .updating { font-size: 11px; color: var(--muted); opacity: 0; transition: opacity 0.2s; }
+      .updating.on { opacity: 1; }
+      #recent { list-style: none; margin: 0; padding: 0; }
+      .item { display: flex; gap: 12px; padding: 9px 0; }
+      .item:last-child { padding-bottom: 2px; }
+      .item + .item { border-top: 1px solid var(--hairline); }
+      .art {
+        flex: none; width: 48px; height: 48px; border-radius: 8px; overflow: hidden;
+        background: var(--fill); box-shadow: inset 0 0 0 0.5px var(--hairline);
+        display: grid; place-items: center; color: var(--muted); font-weight: 600; font-size: 17px;
+      }
+      .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .meta { flex: 1; min-width: 0; }
+      .kicker { display: flex; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; white-space: nowrap; }
+      .show { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .ago { flex: none; }
+      .title {
+        font-size: 13px; font-weight: 600; line-height: 1.3; margin: 1px 0 0;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        overflow-wrap: anywhere;
+      }
+      .foot { display: flex; align-items: center; gap: 12px; margin-top: 7px; }
+      .progress { flex: 1; min-width: 0; }
+      .bar { height: 3px; border-radius: 2px; background: var(--fill); overflow: hidden; }
+      .bar > span { display: block; height: 100%; border-radius: inherit; background: var(--purple); }
+      .sub {
+        font-size: 11px; line-height: 1.3; color: var(--muted); font-variant-numeric: tabular-nums; margin: 4px 0 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .watch {
+        flex: none; min-width: 138px; border: 0; border-radius: 999px; padding: 4px 10px;
+        font: 600 12px/1.4 system-ui, -apple-system, sans-serif; font-variant-numeric: tabular-nums;
+        color: var(--tint-text); background: var(--tint-bg); cursor: pointer;
+        transition: background-color 0.15s, transform 0.1s;
+      }
+      .watch:hover { background: var(--tint-bg-hover); }
+      .watch:active { transform: scale(0.97); }
+      .watch.search { color: var(--text); background: var(--neutral-bg); }
+      .watch.search:hover { background: var(--neutral-bg-hover); }
+      button:focus { outline: none; }
+      button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+      .note { padding: 12px 0 4px; color: var(--muted); }
+      .note p { margin: 0; }
+      .note .watch { margin-top: 10px; min-width: 0; padding: 4px 12px; }
+
+      /* Loading skeleton */
+      .skeleton .art, .skeleton .line {
+        background: linear-gradient(90deg, var(--skeleton) 30%, var(--skeleton-hi) 50%, var(--skeleton) 70%) 0 0 / 300% 100%;
+        animation: shimmer 1.4s ease-in-out infinite;
+        box-shadow: none;
+      }
+      .skeleton .line { height: 10px; border-radius: 4px; margin: 4px 0 8px; }
+      .skeleton .line.short { width: 35%; height: 8px; }
+      .skeleton .line.long { width: 90%; }
+      .skeleton .line.mid { width: 60%; }
+      .skeleton .line.pill { width: 42%; height: 22px; border-radius: 999px; margin: 8px 0 0 auto; }
+      @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton .art, .skeleton .line { animation: none; }
+        .watch, .updating { transition: none; }
+        .watch:active { transform: none; }
+      }
     </style>
   </head>
   <body>
     <h1>Podcast Sync</h1>
-    <div id="helper" class="row"><span class="dot"></span><span>Checking helper…</span></div>
+    <div id="helper" class="row" role="status"><span class="dot"></span><span>Checking helper…</span></div>
     <div id="last" class="last muted"></div>
+
+    <section id="continue" aria-labelledby="continue-heading">
+      <div class="section-head">
+        <h2 id="continue-heading">Continue on YouTube</h2>
+        <span id="updating" class="updating" aria-hidden="true">Checking iPhone…</span>
+      </div>
+      <ul id="recent" aria-labelledby="continue-heading"></ul>
+      <div id="recent-note"></div>
+      <p id="recent-status" class="sr-only" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="settings"></section>
     <script src="popup.js"></script>
   </body>
 </html>
