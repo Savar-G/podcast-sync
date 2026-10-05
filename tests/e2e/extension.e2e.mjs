@@ -129,11 +129,18 @@ try {
     if (t && toasts[toasts.length - 1] !== t) toasts.push(t);
   }, 150);
   // Logged-out YouTube may show an ad first. Skip it like a person would, so the test does not wait on it.
+  // Headless Chromium sometimes leaves an ad paused; press play on it, as a person would.
   const skipAds = setInterval(() => {
     page
       .locator('.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button')
       .first()
       .click({ timeout: 300 })
+      .catch(() => {});
+    page
+      .evaluate(() => {
+        const v = document.querySelector('#movie_player.ad-showing video');
+        if (v?.paused) v.play().catch(() => {});
+      })
       .catch(() => {});
   }, 1000);
 
@@ -145,18 +152,25 @@ try {
   // 1. Apple Podcasts -> YouTube
   const t0 = Date.now();
   await page.goto(`https://www.youtube.com/watch?v=${videoId}`, { waitUntil: 'domcontentloaded' });
-  const jumped = await page
-    .waitForFunction(
-      (want) => {
-        const v = document.querySelector('#movie_player video');
-        const ad = document.querySelector('#movie_player.ad-showing');
-        return v && !ad && Math.abs(v.currentTime - want) < 30 ? v.currentTime : false;
-      },
-      expected,
-      { timeout: 120000, polling: 250 }
-    )
-    .then((h) => h.jsonValue())
-    .catch(() => null);
+  const waitForJump = (timeout) =>
+    page
+      .waitForFunction(
+        (want) => {
+          const v = document.querySelector('#movie_player video');
+          const ad = document.querySelector('#movie_player.ad-showing');
+          return v && !ad && Math.abs(v.currentTime - want) < 30 ? v.currentTime : false;
+        },
+        expected,
+        { timeout, polling: 250 }
+      )
+      .then((h) => h.jsonValue())
+      .catch(() => null);
+  let jumped = await waitForJump(60000);
+  if (jumped == null && (await page.evaluate(() => !!document.querySelector('#movie_player.ad-showing')))) {
+    console.log('note: an ad did not play in headless Chromium; loading the page once more');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    jumped = await waitForJump(60000);
+  }
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   check('YouTube jumped to the Apple Podcasts position', jumped != null, `currentTime=${jumped?.toFixed?.(1)} after ${secs}s`);
   await page.waitForTimeout(600);
@@ -348,6 +362,52 @@ try {
   await page.locator('.podsync-toast button', { hasText: 'Jump to 50:00' }).click().catch(() => {});
   check('"Jump to 50:00" jumps', await nearTime(page, 3000, 2), `currentTime=${(await currentTime(page)).toFixed(1)}`);
   await sw.evaluate(() => chrome.storage.sync.set({ onOpen: 'jump' }));
+
+  // 5. Teach the offset: the "Resumed" toast has -15 s / +15 s. Each press seeks and is saved for the show.
+  const toastText = () => page.evaluate(() => document.querySelector('.podsync-toast .podsync-text')?.textContent || '');
+  const toastButton = (label) => page.locator('.podsync-toast.podsync-show button', { hasText: label });
+  const buttons = await page.evaluate(() => [...document.querySelectorAll('.podsync-toast.podsync-show button')].map((b) => b.textContent));
+  check('the resume toast has -15 s, +15 s, and Undo', JSON.stringify(buttons) === JSON.stringify(['−15 s', '+15 s', 'Undo']), JSON.stringify(buttons));
+  await toastButton('+15 s').click();
+  const moved = await nearTime(page, 3015, 2);
+  await page.waitForFunction(() => /^Saved\./.test(document.querySelector('.podsync-toast .podsync-text')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  check('+15 s seeks and says what it learned', moved && (await toastText()) === "Saved. This show's video runs 15 s ahead of the audio.", await toastText());
+  // Keyboard: Enter on +15 s, and focus stays on the button for the next press.
+  await toastButton('+15 s').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /30 s ahead/.test(document.querySelector('.podsync-toast .podsync-text')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  const focusKept = await page.evaluate(() => document.activeElement?.textContent);
+  check('a second press adds up, and keeps keyboard focus', (await nearTime(page, 3030, 2)) && /30 s ahead/.test(await toastText()) && focusKept === '+15 s', `${await toastText()} focus=${focusKept}`);
+  await toastButton('−15 s').click();
+  await page.waitForFunction(() => /15 s ahead/.test(document.querySelector('.podsync-toast .podsync-text')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  const box5 = await page.locator('#movie_player').boundingBox();
+  await page.screenshot({ path: path.join(shots, 'e2e-5-nudge-toast.png'), clip: { x: box5.x, y: box5.y + box5.height - 140, width: box5.width, height: 140 } });
+  mk = await markerInfo(page);
+  check('-15 s takes one press back; the marker moves with the offset', (await nearTime(page, 3015, 2)) && /^iPhone · 50:15/.test(mk.tip || ''), `${await toastText()} marker="${mk.tip}"`);
+
+  // The learned +15 s applies to the iPhone link ...
+  const pausedNudged = await page.evaluate(() => {
+    const v = document.querySelector('#movie_player video');
+    if (v.paused) v.dispatchEvent(new Event('pause'));
+    else v.pause();
+    return v.currentTime;
+  });
+  await page.waitForTimeout(2500);
+  let nudged = { seconds: NaN, url: '' };
+  try {
+    nudged = JSON.parse(readFileSync(handoff, 'utf8'));
+  } catch {}
+  check('the iPhone link uses the learned offset', Math.abs(nudged.seconds - (pausedNudged - 15)) <= 2, `paused at ${pausedNudged.toFixed(1)}, link t=${nudged.seconds}`);
+
+  // ... and to the next jump from the iPhone: Podcasts 55:00 is video 55:15.
+  playOnIPhone(3300);
+  toasts.length = 0;
+  await page.goto(`https://www.youtube.com/watch?v=${videoId}`, { waitUntil: 'domcontentloaded' });
+  const jumpedNudged = await page
+    .waitForFunction(() => /Resumed at 55:15/.test(document.querySelector('.podsync-toast.podsync-show')?.textContent || ''), null, { timeout: 60000 })
+    .then(() => true)
+    .catch(() => false);
+  check('the next jump uses the learned offset', jumpedNudged && (await nearTime(page, 3315, 2)), `currentTime=${(await currentTime(page)).toFixed(1)}`);
 
   clearInterval(pollToasts);
   clearInterval(skipAds);

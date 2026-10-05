@@ -10,7 +10,7 @@ Many podcasts publish the same episode twice: as video on YouTube and as audio i
 
 ## How you use it
 
-- **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump. If the check takes more than a moment, you see **Checking Apple Podcasts…**.
+- **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump. If the video is a little early or late, press **−15 s** or **+15 s**. The helper remembers this for the show, in both directions. If the check takes more than a moment, you see **Checking Apple Podcasts…**.
 - **iPhone was here:** a small purple mark on the YouTube progress bar shows where you stopped on the iPhone. Point at it to see the time and when you played it. Click it (or press Enter on it) to jump there. It hides when the video is within 15 seconds of it.
 - **YouTube → iPhone:** pause the video. The toast says **Sent to iPhone at 13:40**: open Apple Podcasts on your iPhone and press play. If the toast says **Ready on iPhone at 13:40**, tap the **Resume Podcast** shortcut instead, and Apple Podcasts opens the episode with **Play from 13:40**.
 - **Continue on YouTube:** click the extension icon. It lists the episodes you played lately in Apple Podcasts. Click **Watch from 40:30** to open the YouTube video at that time. If the helper does not know the video yet, the button is **Search on YouTube**.
@@ -67,6 +67,7 @@ cd podcast-sync
   - It skips the push if Podcasts plays on your Mac, if the spot is within 15 seconds of the Podcasts position, if it is in the last minute of the episode (Podcasts would mark it as played), or if you listened in Apple Podcasts after the video last moved (an old paused tab that you close does not undo a newer iPhone listen).
   - At most one push per episode every 20 seconds. If you pause again during that time, the newest spot goes when the time is up.
   - The extension waits up to 3 seconds for the result. If Podcasts must start first, the push can take longer: then the toast says **Ready on iPhone**, and the push still completes.
+- **Learned offsets.** Some shows put a different intro or ads in the video. Each **−15 s** / **+15 s** press adds to that show's offset in the helper's state file. The helper uses it for the jump on YouTube, for the push to the iPhone, and for the iPhone link.
 - **The marker** uses the same check as the jump, so it also shows when your YouTube position is newer. It sits inside YouTube's progress bar and follows theater mode, fullscreen, and the mini player.
 - **The iPhone link** is a standard Apple Podcasts link with a time (`…?i=<episode>&t=820`), which Apple Podcasts opens at that time. The helper writes it on every pause, so the **Resume Podcast** shortcut always works as the fallback.
 
@@ -92,7 +93,7 @@ No config is needed. To pin a channel or fix a show whose audio is always ahead 
 
 | Key | Meaning |
 |---|---|
-| `shows[].offset_seconds` | YouTube time minus Podcasts time, for example `90`. |
+| `shows[].offset_seconds` | YouTube time minus Podcasts time, for example `90`. The **−15 s** / **+15 s** buttons add to it (at most 10 minutes either way). |
 | `shows[].youtube_channels`, `apple_ids` | Pin a YouTube channel ID to Apple Podcasts show IDs. |
 | `min_video_seconds` | Shorter videos (clips) are ignored. Default `600`. |
 | `podcasts_idle_quit_seconds` | How long a hidden Podcasts app stays open. Default `600`. |
