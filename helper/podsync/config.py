@@ -40,6 +40,9 @@ class Config:
     port: int = 47321
     min_video_seconds: int = 600
     podcasts_idle_quit_seconds: int = 600
+    # On pause, also move Apple Podcasts on this Mac to the YouTube spot; iCloud then
+    # carries it to the iPhone, so no Shortcut tap is needed (features/push_to_podcasts.py).
+    push_to_podcasts: bool = True
     extension_ids: List[str] = field(default_factory=lambda: [EXTENSION_ID])
     shows: List[Show] = field(default_factory=list)
     db_path: Path = PODCASTS_DB

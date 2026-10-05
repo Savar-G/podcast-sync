@@ -88,7 +88,7 @@
     if (!Number.isFinite(t) || t < 1) return;
     ask('progress', { videoId: id, currentTime: t, event, title: title(), duration: Number.isFinite(v.duration) ? v.duration : null }).then(
       (r) => {
-        if (r?.matched && event === 'pause') toast(`Ready on iPhone at ${r.label}`, { ms: 2500 });
+        if (r?.matched && event === 'pause') toast(`${r.pushed ? 'Sent to iPhone' : 'Ready on iPhone'} at ${r.label}`, { ms: 2500 });
       }
     );
   }

@@ -11,7 +11,7 @@ Many podcasts publish the same episode twice: as video on YouTube and as audio i
 ## How you use it
 
 - **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump.
-- **YouTube → iPhone:** pause the video, then tap the **Resume Podcast** shortcut on your iPhone. Apple Podcasts opens the episode with **Play from 13:40**.
+- **YouTube → iPhone:** pause the video. The toast says **Sent to iPhone at 13:40**: open Apple Podcasts on your iPhone and press play. If the toast says **Ready on iPhone at 13:40**, tap the **Resume Podcast** shortcut instead, and Apple Podcasts opens the episode with **Play from 13:40**.
 - **Continue on YouTube:** click the extension icon. It lists the episodes you played lately in Apple Podcasts. Click **Watch from 40:30** to open the YouTube video at that time. If the helper does not know the video yet, the button is **Search on YouTube**.
 - **Newest wins:** a position moves to the other side only when it is newer than the last position from that side.
 
@@ -41,7 +41,7 @@ cd podcast-sync
 
    <img src="docs/setup-page.png" alt="The setup page: two steps done, three to do" width="450">
 
-3. **iPhone shortcut.** On your Mac, run:
+3. **iPhone shortcut (fallback).** Usually your iPhone gets the position by itself. For the times it cannot (for example, Podcasts plays on your Mac), on your Mac run:
    ```bash
    python3 scripts/make_shortcut.py && open "shortcut/Resume Podcast.shortcut"
    ```
@@ -53,24 +53,31 @@ cd podcast-sync
  Chrome extension ──► Podcast Sync Helper (127.0.0.1:47321, on your Mac)
   reads the YouTube      │ ├─ reads the Apple Podcasts library on this Mac (read-only)
   player time            │ │    iCloud keeps your iPhone's position in it
-                         │ └─ writes a "resume here" link to iCloud Drive
+                         │ ├─ on pause: moves Apple Podcasts on this Mac to the same second
+                         │ │    Podcasts sends it to iCloud ──► Apple Podcasts on iPhone
+                         │ └─ writes a "resume here" link to iCloud Drive (fallback)
                          ▼
              iCloud Drive/Shortcuts/podcast-sync/resume.txt ──► "Resume Podcast" on iPhone
 ```
 
 - **Matching.** YouTube and podcast titles often differ ("From HOA Management to $4B…" on YouTube is "Bringing AI to the Real Economy" in Podcasts). The helper matches on length, publish date, and shared title words, usually the guest's name. It allows for up to 5 minutes of extra ads in the audio. On a test set of 33 recent videos from 5 shows, it matched every full episode and rejected every clip.
 - **Fresh iPhone positions.** The Mac pulls positions from iCloud only while the Podcasts app runs. The helper opens Podcasts hidden, waits about 2–3 seconds for the sync, and quits it after 10 idle minutes. It never quits a Podcasts window that you opened.
-- **The iPhone link** is a standard Apple Podcasts link with a time (`…?i=<episode>&t=820`), which Apple Podcasts opens at that time.
+- **No tap on the iPhone.** Apple Podcasts sends a changed position to iCloud at once, and your iPhone gets it from there. So when you pause or leave a matched video, the helper tells Apple Podcasts on your Mac to load that episode, paused, and to go to the same second. Nothing plays and no window opens. These are the same requests that the Podcasts notification buttons and Control Center send. A small tool, `podcasts-remote` (built from [`scripts/podcasts_remote.c`](scripts/podcasts_remote.c)), sends them. The helper then reads the library to make sure that Podcasts recorded the new position. Only then does the toast say **Sent to iPhone**.
+  - It skips the push if Podcasts plays on your Mac, if the spot is within 15 seconds of the Podcasts position, if it is in the last minute of the episode (Podcasts would mark it as played), or if you listened in Apple Podcasts after the video last moved (an old paused tab that you close does not undo a newer iPhone listen).
+  - At most one push per episode every 20 seconds. If you pause again during that time, the newest spot goes when the time is up.
+  - The extension waits up to 3 seconds for the result. If Podcasts must start first, the push can take longer: then the toast says **Ready on iPhone**, and the push still completes.
+- **The iPhone link** is a standard Apple Podcasts link with a time (`…?i=<episode>&t=820`), which Apple Podcasts opens at that time. The helper writes it on every pause, so the **Resume Podcast** shortcut always works as the fallback.
 
 ## Privacy and security
 
 - **Everything stays on your Mac and in your own iCloud.** No servers, no accounts, no analytics.
-- The helper opens the Podcasts library **read-only**. It never changes your library.
+- The helper opens the Podcasts library **read-only**. It never writes to the library file. To move an episode to your YouTube spot, it asks the Podcasts app, as if you moved the slider. Set `push_to_podcasts` to `false` to stop this.
+- `podcasts-remote` uses MediaRemote, a private macOS framework. It sends commands only to Apple Podcasts, never to the app that plays now. Apple can change MediaRemote at any time. If it stops working, the helper falls back to the Shortcut link.
 - For the setup page, the helper checks if a shortcut named "Resume Podcast" exists (`shortcuts list`), and reads the time Podcasts last synced with iCloud. It does not save or send this data.
 - The only network requests: the helper loads the public YouTube page of a video you open (for its channel, length, and date), and Apple's public podcast lookup API when an episode is too new for your Mac library. For **Continue on YouTube**, the helper also loads the public upload feed of YouTube channels it already knows and the pages of new uploads on them, and the popup loads show artwork from Apple's image server.
 - The helper listens on `127.0.0.1` only. It accepts requests from this extension (its ID is pinned in `manifest.json`) or from a local tool such as `curl`. It refuses web pages, other extensions, and DNS-rebinding attempts.
 - The extension can talk only to `http://127.0.0.1:47321` and runs only on `youtube.com`.
-- Local files: `~/Library/Application Support/podcast-sync/` (match cache), `~/Library/Logs/podcast-sync.log`, and the link file in iCloud Drive.
+- Local files: `~/Library/Application Support/podcast-sync/` (match cache, `podcasts-remote`), `~/Library/Logs/podcast-sync.log`, and the link file in iCloud Drive.
 
 ## Settings (optional)
 
@@ -82,6 +89,7 @@ No config is needed. To pin a channel or fix a show whose audio is always ahead 
 | `shows[].youtube_channels`, `apple_ids` | Pin a YouTube channel ID to Apple Podcasts show IDs. |
 | `min_video_seconds` | Shorter videos (clips) are ignored. Default `600`. |
 | `podcasts_idle_quit_seconds` | How long a hidden Podcasts app stays open. Default `600`. |
+| `push_to_podcasts` | On pause, move Apple Podcasts on this Mac to your YouTube spot, so the iPhone gets it through iCloud with no tap. Default `true`. With `false`, use the **Resume Podcast** shortcut. |
 
 ## Troubleshooting
 
@@ -90,6 +98,8 @@ No config is needed. To pin a channel or fix a show whose audio is always ahead 
 | Nothing happens on YouTube | Reload the tab: Chrome adds the extension only to pages loaded after you install it. Click the extension icon to see the helper status. |
 | "macOS has not allowed it to read Podcasts" | Open **System Settings → Privacy & Security** and allow Podcast Sync Helper, or run `./scripts/install.sh` again and click **Allow**. |
 | The video does not jump | Your last YouTube session for that episode is newer than your iPhone listen, or you are within 15 seconds of the iPhone position. |
+| The toast says "Ready on iPhone", not "Sent to iPhone" | Podcasts plays on your Mac, the spot is in the last minute, or Podcasts had to start first. Use the **Resume Podcast** shortcut. To see why, run `curl -H 'X-Podsync: 1' 127.0.0.1:47321/status` and look at `pushToPodcasts`. |
+| The iPhone shows an old position after "Sent to iPhone" | Close Apple Podcasts on the iPhone and open it again: it loads positions from iCloud when it opens. Make sure that **Sync Library** is on in Podcasts settings on both devices. |
 | The Shortcut says the file could not be opened | In the Files app, open **iCloud Drive → Shortcuts → podcast-sync**, tap `resume.txt` once, then touch and hold the folder and choose **Keep Downloaded**. |
 | Anything else | `tail -f ~/Library/Logs/podcast-sync.log` |
 
@@ -115,7 +125,7 @@ npm install && npx playwright-core install chromium
 |---|---|
 | `helper/podsync/` | The helper: Python standard library only |
 | `extension/` | Chrome extension (Manifest V3) |
-| `scripts/` | Install, uninstall, Shortcut builder, app launcher, e2e runner |
+| `scripts/` | Install, uninstall, Shortcut builder, app launcher, `podcasts_remote.c`, e2e runner |
 | `tests/` | Unit tests and fixtures; `tests/e2e/` browser test |
 
 Podcast Sync is not affiliated with Apple, Google, or YouTube. It reads data that Apple Podcasts stores on your Mac, and Apple can change that format at any time.
