@@ -1,0 +1,13 @@
+{
+  "_comment": "Optional. Copy to ~/.config/podcast-sync/config.json, then run scripts/install.sh again. Shows are found automatically; only add one to pin a channel or fix an offset.",
+  "min_video_seconds": 600,
+  "podcasts_idle_quit_seconds": 600,
+  "shows": [
+    {
+      "name": "Lenny's Podcast",
+      "youtube_channels": ["UC6t1O76G0jYXOAoYCm153dA"],
+      "apple_ids": [1627920305],
+      "offset_seconds": 0
+    }
+  ]
+}

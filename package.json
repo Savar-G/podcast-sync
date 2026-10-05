@@ -1,0 +1,12 @@
+{
+  "name": "podcast-sync",
+  "private": true,
+  "description": "Dev tooling for the browser end-to-end test. The helper itself needs no packages.",
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests",
+    "test:e2e": "./scripts/e2e.sh"
+  },
+  "devDependencies": {
+    "playwright-core": "1.62.1"
+  }
+}

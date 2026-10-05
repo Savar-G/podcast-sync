@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 280px;
+        margin: 0;
+        padding: 14px 16px;
+        font: 13px/1.45 system-ui, -apple-system, sans-serif;
+        color: #1d1d1f;
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #f5f5f7; background: #1c1c1e; }
+        .muted { color: #98989d !important; }
+      }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
+      .ok .dot { background: #30d158; }
+      .bad .dot { background: #ff453a; }
+      .muted { color: #6e6e73; }
+      .last { margin-top: 12px; }
+      .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Podcast Sync</h1>
+    <div id="helper" class="row"><span class="dot"></span><span>Checking helper…</span></div>
+    <div id="last" class="last muted"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

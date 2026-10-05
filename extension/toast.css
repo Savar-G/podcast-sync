@@ -1,0 +1,71 @@
+.podsync-toast {
+  position: absolute;
+  left: 12px;
+  bottom: 64px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 8px 8px 8px 12px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.88);
+  color: #f1f1f1;
+  font: 500 13px/18px Roboto, 'YouTube Sans', system-ui, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+body > .podsync-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+}
+.podsync-toast.podsync-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.podsync-toast > span:last-of-type {
+  padding-right: 4px;
+}
+.podsync-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #b150e2; /* Apple Podcasts purple */
+}
+.podsync-busy {
+  animation: podsync-pulse 900ms ease-in-out infinite;
+}
+@keyframes podsync-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+.podsync-toast button {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #3ea6ff;
+  font: inherit;
+  cursor: pointer;
+}
+.podsync-toast button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .podsync-toast {
+    transition: none;
+  }
+  .podsync-busy {
+    animation: none;
+  }
+}

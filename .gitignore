@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+# Signed Shortcuts carry the signer's iCloud identity: build your own with scripts/make_shortcut.py
+shortcut/
