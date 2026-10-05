@@ -76,7 +76,9 @@ try {
   await page.waitForTimeout(2500);
   const pausedAt = await page.evaluate(() => {
     const v = document.querySelector('#movie_player video');
-    v.pause();
+    // Headless Chromium does not always start playback; then pause() fires no event.
+    if (v.paused) v.dispatchEvent(new Event('pause'));
+    else v.pause();
     return v.currentTime;
   });
   await page.waitForFunction(() => /Ready on iPhone/.test(document.querySelector('.podsync-toast')?.textContent || ''), null, {

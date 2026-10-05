@@ -6,8 +6,9 @@ last position we saw from that side.
 from __future__ import annotations
 
 import logging
+import re
 import time
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import apple_lookup, handoff, match
 from .config import Config, Show
@@ -25,6 +26,22 @@ HEARTBEAT_WRITE_SECONDS = 20
 MIN_SEEK_DELTA = 15
 
 
+class BadRequest(ValueError):
+    """Raised by a handler when the request body is invalid (HTTP 400)."""
+
+
+def video_args(body: Dict[str, Any]) -> Tuple[str, float, Dict]:
+    """Validate the common {videoId, currentTime, title, duration} body."""
+    try:
+        video_id = str(body["videoId"])
+        current = float(body.get("currentTime") or 0)
+    except (KeyError, TypeError, ValueError):
+        raise BadRequest("videoId and currentTime required")
+    if not re.fullmatch(r"[\w-]{11}", video_id) or not 0 <= current < 86400:
+        raise BadRequest("bad videoId or currentTime")
+    return video_id, current, {"title": body.get("title"), "duration": body.get("duration")}
+
+
 class SyncService:
     def __init__(
         self,
@@ -39,6 +56,16 @@ class SyncService:
         self.cfg, self.db, self.app, self.state = cfg, db, app, state
         self.fetch_meta, self.lookup = fetch_meta, lookup
         self._last_write: Dict = {}
+        # POST /<name> -> handler(body). Features in podsync/features add their own.
+        self.handlers: Dict[str, Callable[[Dict], Dict]] = {
+            "match": lambda b: self.match(*_drop_time(video_args(b))),
+            "resume": lambda b: self.resume(*video_args(b)),
+            "progress": lambda b: self.progress(*_with_event(video_args(b), b)),
+        }
+        self.status_extras: List[Callable[[], Dict]] = []
+        from . import features
+
+        features.load_all(self)
 
     # ---- matching -------------------------------------------------------
     def resolve(self, video_id: str, hint: Optional[Dict] = None) -> Dict:
@@ -178,4 +205,20 @@ class SyncService:
         except (OSError, ValueError):
             pass
         # Never block here: the first library check may be waiting on a macOS prompt.
-        return {"ok": True, "libraryReadable": getattr(self.db, "access", None), "lastHandoff": last}
+        out = {"ok": True, "libraryReadable": getattr(self.db, "access", None), "lastHandoff": last}
+        for extra in self.status_extras:
+            try:
+                out.update(extra())
+            except Exception:
+                log.exception("status extra failed")
+        return out
+
+
+def _drop_time(args):
+    video_id, _current, hint = args
+    return video_id, hint
+
+
+def _with_event(args, body):
+    video_id, current, hint = args
+    return video_id, current, str(body.get("event") or ""), hint

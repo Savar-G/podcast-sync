@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Iterable, Optional
 
-from .service import SyncService
+from .service import BadRequest, SyncService
 
 log = logging.getLogger("podsync.http")
 
@@ -63,29 +62,25 @@ def make_handler(service: SyncService, extension_ids: Iterable[str], port: int):
         def do_POST(self):
             if not self._trusted():
                 return self._send(403, {"error": "forbidden"})
+            handler = service.handlers.get(self.path.lstrip("/"))
+            if handler is None:
+                return self._send(404, {"error": "not found"})
             try:
                 length = int(self.headers.get("Content-Length") or 0)
                 if length > MAX_BODY:
                     return self._send(413, {"error": "too large"})
                 body = json.loads(self.rfile.read(length) or b"{}")
-                video_id = str(body["videoId"])
-                current = float(body.get("currentTime") or 0)
-                if not re.fullmatch(r"[\w-]{11}", video_id) or not 0 <= current < 86400:
+                if not isinstance(body, dict):
                     raise ValueError
-            except (ValueError, KeyError, TypeError):
+            except ValueError:
                 return self._send(400, {"error": "bad request"})
-            hint = {"title": body.get("title"), "duration": body.get("duration")}
             try:
-                if self.path == "/match":
-                    return self._send(200, service.match(video_id, hint))
-                if self.path == "/resume":
-                    return self._send(200, service.resume(video_id, current, hint))
-                if self.path == "/progress":
-                    return self._send(200, service.progress(video_id, current, str(body.get("event") or ""), hint))
+                return self._send(200, handler(body))
+            except BadRequest as e:
+                return self._send(400, {"error": str(e)})
             except Exception:
                 log.exception("request failed")
                 return self._send(500, {"error": "internal error"})
-            self._send(404, {"error": "not found"})
 
     return Handler
 

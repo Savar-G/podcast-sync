@@ -10,17 +10,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "helper"))
 
 from podsync.server import serve  # noqa: E402
+from podsync.service import video_args  # noqa: E402
 
 
 class StubService:
-    def match(self, video_id, hint):
-        return {"matched": False, "reason": "stub"}
+    def __init__(self):
+        def resume(body):
+            video_id, _, _ = video_args(body)
+            return {"action": "none", "reason": "stub", "videoId": video_id}
 
-    def resume(self, video_id, current, hint):
-        return {"action": "none", "reason": "stub", "videoId": video_id}
-
-    def progress(self, video_id, current, event, hint):
-        return {"matched": False, "event": event}
+        self.handlers = {
+            "match": lambda b: video_args(b) and {"matched": False, "reason": "stub"},
+            "resume": resume,
+            "progress": lambda b: video_args(b) and {"matched": False},
+        }
 
     def status(self):
         return {"ok": True}
@@ -71,7 +74,13 @@ class ServerTest(unittest.TestCase):
         code, _ = self.post("/match", None, {"Origin": "https://evil.example"}, data=b"", method="OPTIONS")
         self.assertEqual(code, 403)
 
+    def test_unknown_endpoint(self):
+        code, _ = self.post("/nope", self.VID, {"X-Podsync": "1"})
+        self.assertEqual(code, 404)
+
     def test_bad_body(self):
+        code, _ = self.post("/resume", None, {"X-Podsync": "1"}, data=b"[1, 2]")
+        self.assertEqual(code, 400)
         for body in ({"nope": 1}, {"videoId": "../../etc"}, {"videoId": "w3-nMklTFjY", "currentTime": -5}):
             code, _ = self.post("/resume", body, {"X-Podsync": "1"})
             self.assertEqual(code, 400, body)
