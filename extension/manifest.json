@@ -7,6 +7,13 @@
   "host_permissions": [
     "http://127.0.0.1:47321/*"
   ],
+  "permissions": [
+    "storage"
+  ],
+  "options_ui": {
+    "page": "setup.html",
+    "open_in_tab": true
+  },
   "background": {
     "service_worker": "background.js"
   },

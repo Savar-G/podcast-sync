@@ -35,6 +35,11 @@ cd podcast-sync
 
 1. **Helper.** `install.sh` builds a small background app, **Podcast Sync Helper**, and starts it at login. macOS asks once to let it "access data from other apps". Click **Allow**: this lets it read the Apple Podcasts library on your Mac.
 2. **Chrome extension.** Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and choose the `extension` folder. Reload any open YouTube tabs.
+
+   A setup page opens when you load the extension. It checks each step by itself and shows what is left to do. To open it again, right-click the Podcast Sync icon and choose **Options**.
+
+   <img src="docs/setup-page.png" alt="The setup page: two steps done, three to do" width="450">
+
 3. **iPhone shortcut.** On your Mac, run:
    ```bash
    python3 scripts/make_shortcut.py && open "shortcut/Resume Podcast.shortcut"
@@ -60,6 +65,7 @@ cd podcast-sync
 
 - **Everything stays on your Mac and in your own iCloud.** No servers, no accounts, no analytics.
 - The helper opens the Podcasts library **read-only**. It never changes your library.
+- For the setup page, the helper checks if a shortcut named "Resume Podcast" exists (`shortcuts list`), and reads the time Podcasts last synced with iCloud. It does not save or send this data.
 - The only network requests: the helper loads the public YouTube page of a video you open (for its channel, length, and date), and Apple's public podcast lookup API when an episode is too new for your Mac library.
 - The helper listens on `127.0.0.1` only. It accepts requests from this extension (its ID is pinned in `manifest.json`) or from a local tool such as `curl`. It refuses web pages, other extensions, and DNS-rebinding attempts.
 - The extension can talk only to `http://127.0.0.1:47321` and runs only on `youtube.com`.
