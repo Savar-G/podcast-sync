@@ -84,6 +84,7 @@
   let toastEl = null;
   let toastTimer = null;
   let toastMs = 0;
+  let toastHeld = false; // pointer or keyboard focus is on the toast
 
   // actions: [{ label, ariaLabel?, onClick, keepOpen? }]
   function toast(text, { actions = [], actionLabel, onAction, ms = 3000, busy = false } = {}) {
@@ -95,12 +96,26 @@
       toastEl.className = 'podsync-toast';
       toastEl.setAttribute('role', 'status');
       // Keep it open while you point at it or tab through its buttons.
-      toastEl.addEventListener('pointerenter', () => clearTimeout(toastTimer));
-      toastEl.addEventListener('focusin', () => clearTimeout(toastTimer));
-      toastEl.addEventListener('pointerleave', () => restartToastTimer());
-      toastEl.addEventListener('focusout', (e) => !toastEl.contains(e.relatedTarget) && restartToastTimer());
+      const hold = (on) => {
+        toastHeld = on;
+        on ? clearTimeout(toastTimer) : restartToastTimer();
+      };
+      toastEl.addEventListener('pointerenter', () => hold(true));
+      toastEl.addEventListener('pointerleave', () => hold(toastEl.contains(document.activeElement)));
+      toastEl.addEventListener('focusin', () => hold(true));
+      toastEl.addEventListener('focusout', (e) => !toastEl.contains(e.relatedTarget) && hold(toastEl.matches(':hover')));
       host.appendChild(toastEl);
     }
+    toastEl.inert = false;
+    requestAnimationFrame(() => toastEl?.classList.add('podsync-show'));
+    toastMs = ms;
+    restartToastTimer();
+    // Same buttons as now (e.g. after a -15 s press): change only the text, so keyboard focus stays.
+    if (actions.length && toastEl.podsyncActions === actions) {
+      toastEl.querySelector('.podsync-text').textContent = text;
+      return;
+    }
+    toastEl.podsyncActions = actions;
     toastEl.replaceChildren();
     const dot = document.createElement('span');
     dot.className = busy ? 'podsync-dot podsync-busy' : 'podsync-dot';
@@ -120,32 +135,68 @@
       });
       toastEl.append(btn);
     }
-    toastEl.inert = false;
-    requestAnimationFrame(() => toastEl?.classList.add('podsync-show'));
-    toastMs = ms;
-    restartToastTimer();
   }
 
   function restartToastTimer() {
     clearTimeout(toastTimer);
-    if (toastMs) toastTimer = setTimeout(hideToast, toastMs);
+    if (toastMs && !toastHeld) toastTimer = setTimeout(hideToast, toastMs);
   }
 
   function hideToast() {
     clearTimeout(toastTimer);
+    toastHeld = false;
     if (!toastEl) return;
     toastEl.classList.remove('podsync-show');
     if (toastEl.contains(document.activeElement)) document.activeElement.blur();
     toastEl.inert = true; // hidden buttons must not take keyboard focus
   }
 
+  // "40:30" / "1:02:09"
+  function fmtTime(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+
+  // "15 s", "1 min 30 s"
+  function fmtSpan(seconds) {
+    const s = Math.round(Math.abs(seconds));
+    if (s < 60) return `${s} s`;
+    return s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`;
+  }
+
+  function offsetSentence(offset) {
+    if (Math.abs(offset) < 0.5) return "Saved. This show's video and audio are in sync.";
+    return `Saved. This show's video runs ${fmtSpan(offset)} ${offset > 0 ? 'ahead of' : 'behind'} the audio.`;
+  }
+
+  // The jump landed early or late: move the video, and teach the helper this show's offset.
+  async function nudge(v, delta, actions) {
+    const id = state.videoId || marker.videoId;
+    v.currentTime = Math.max(0, v.currentTime + delta);
+    const r = await ask('nudge', { videoId: id, delta });
+    if (!r?.saved) return toast('Could not save that for this show.', { actions, ms: 7000 });
+    if (marker.videoId === id) {
+      marker.time = Math.max(0, marker.time + delta); // the iPhone position moved with the offset
+      marker.label = fmtTime(marker.time);
+      marker.key = '';
+      updateMarkerText();
+      placeMarker();
+    }
+    toast(offsetSentence(r.offset), { actions, ms: 7000 });
+  }
+
   function jumpTo(v, time, label) {
     const before = v.currentTime;
     v.currentTime = time;
-    toast(`Resumed at ${label} from Apple Podcasts`, {
-      actions: [{ label: 'Undo', onClick: () => (v.currentTime = before) }],
-      ms: 7000,
-    });
+    const actions = [
+      { label: '−15 s', ariaLabel: 'Back 15 seconds, and remember it for this show', keepOpen: true, onClick: () => nudge(v, -15, actions) },
+      { label: '+15 s', ariaLabel: 'Forward 15 seconds, and remember it for this show', keepOpen: true, onClick: () => nudge(v, 15, actions) },
+      { label: 'Undo', ariaLabel: 'Undo the jump', onClick: () => (v.currentTime = before) },
+    ];
+    toast(`Resumed at ${label} from Apple Podcasts`, { actions, ms: 7000 });
   }
 
   // ---- "iPhone was here" marker on the progress bar -------------------------

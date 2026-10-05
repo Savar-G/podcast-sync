@@ -9,7 +9,7 @@
   gap: 10px;
   max-width: calc(100% - 24px);
   padding: 8px 8px 8px 12px;
-  border-radius: 999px;
+  border-radius: 18px; /* a pill on one line; still tidy if the text wraps in a small player */
   background: rgba(15, 15, 15, 0.88);
   color: #f1f1f1;
   font: 500 13px/18px Roboto, 'YouTube Sans', system-ui, sans-serif;
@@ -32,6 +32,7 @@ body > .podsync-toast {
   pointer-events: auto;
 }
 .podsync-toast > .podsync-text {
+  min-width: 0;
   padding-right: 4px;
 }
 .podsync-dot {

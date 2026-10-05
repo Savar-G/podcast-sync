@@ -63,6 +63,8 @@ class SyncService:
             "progress": lambda b: self.progress(*_with_event(video_args(b), b)),
         }
         self.status_extras: List[Callable[[], Dict]] = []
+        # fn(collection_id) -> seconds, added to the configured offset (e.g. a learned one).
+        self.offset_extras: List[Callable[[int], float]] = []
         from . import features
 
         features.load_all(self)
@@ -124,8 +126,12 @@ class SyncService:
         }
 
     def _offset(self, collection_id: int) -> float:
+        """YouTube time minus Podcasts time: the configured offset plus any learned one."""
         show: Optional[Show] = self.cfg.show_for_apple_id(collection_id)
-        return float(show.offset_seconds) if show else 0.0
+        offset = float(show.offset_seconds) if show else 0.0
+        for extra in self.offset_extras:
+            offset += extra(collection_id)
+        return offset
 
     def match(self, video_id: str, hint: Optional[Dict] = None) -> Dict:
         entry = self.resolve(video_id, hint)
