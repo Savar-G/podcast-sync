@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Set up Podcast Sync</title>
+    <link rel="icon" href="icons/48.png" />
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <img class="app-icon" src="icons/128.png" width="64" height="64" alt="" />
+        <h1>Set up Podcast Sync</h1>
+        <p class="lede">Each step checks itself and shows a check mark when it is done. Keep this page open while you work.</p>
+        <div class="progress">
+          <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progress-fill"></div></div>
+          <p class="progress-label" id="progress-label">Checking your setup…</p>
+        </div>
+      </header>
+
+      <ol class="steps">
+        <!-- 1. Helper -->
+        <li class="step" id="step-helper" data-state="waiting">
+          <div class="mark" aria-hidden="true">
+            <span class="num">1</span>
+            <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
+          </div>
+          <div class="body">
+            <h2>Start the helper</h2>
+            <p class="sr-state visually-hidden"></p>
+            <div class="when" data-when="waiting"><p class="status">Looking for the helper…</p></div>
+            <div class="when" data-when="todo">
+              <p class="status">The helper is not running.</p>
+              <p>The helper is a small app on your Mac. It reads Apple Podcasts for the extension. In the <code>podcast-sync</code> folder, run this in Terminal:</p>
+              <div class="command">
+                <code>./scripts/install.sh</code>
+                <button type="button" class="copy" data-copy="./scripts/install.sh" aria-label="Copy the install command">Copy</button>
+              </div>
+            </div>
+            <div class="when" data-when="done"><p class="status">The helper is running.</p></div>
+          </div>
+        </li>
+
+        <!-- 2. Podcasts access -->
+        <li class="step" id="step-access" data-state="blocked">
+          <div class="mark" aria-hidden="true">
+            <span class="num">2</span>
+            <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
+          </div>
+          <div class="body">
+            <h2>Allow access to Apple Podcasts</h2>
+            <p class="sr-state visually-hidden"></p>
+            <div class="when" data-when="blocked"><p class="status">Do step 1 first.</p></div>
+            <div class="when" data-when="waiting">
+              <p class="status">Click <strong>Allow</strong> on the macOS prompt for Podcast Sync Helper.</p>
+              <p class="hint">The prompt asks to let it access data from other apps. This lets it read your Apple Podcasts library. It never changes the library.</p>
+            </div>
+            <div class="when" data-when="todo">
+              <p class="status">macOS does not let the helper read Apple Podcasts.</p>
+              <p>Open <strong>System Settings → Privacy &amp; Security</strong> and allow Podcast Sync Helper. Or run the install command again and click <strong>Allow</strong>:</p>
+              <div class="command">
+                <code>./scripts/install.sh</code>
+                <button type="button" class="copy" data-copy="./scripts/install.sh" aria-label="Copy the install command">Copy</button>
+              </div>
+            </div>
+            <div class="when" data-when="done"><p class="status">The helper can read your Apple Podcasts library.</p></div>
+          </div>
+        </li>
+
+        <!-- 3. Sync Library -->
+        <li class="step" id="step-sync" data-state="todo">
+          <div class="mark" aria-hidden="true">
+            <span class="num">3</span>
+            <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
+          </div>
+          <div class="body">
+            <h2>Turn on Sync Library</h2>
+            <p class="sr-state visually-hidden"></p>
+            <div class="when" data-when="todo done-manual">
+              <p>Your iPhone sends its play position through iCloud. Turn on <strong>Sync Library</strong> on both devices:</p>
+              <ul class="where">
+                <li><span class="device">Mac</span> Podcasts → Settings → General → Sync Library</li>
+                <li><span class="device">iPhone</span> Settings → Apps → Podcasts → Sync Library</li>
+              </ul>
+              <label class="confirm">
+                <input type="checkbox" id="sync-confirm" />
+                <span>Sync Library is on, on both devices</span>
+              </label>
+              <p class="hint">This page cannot read this setting, so it asks you.</p>
+            </div>
+            <div class="when" data-when="done-auto">
+              <p class="status">Apple Podcasts on this Mac synced play positions with iCloud this week.</p>
+              <p class="hint">Keep <strong>Sync Library</strong> on, on your iPhone too: Settings → Apps → Podcasts.</p>
+            </div>
+          </div>
+        </li>
+
+        <!-- 4. Shortcut -->
+        <li class="step" id="step-shortcut" data-state="blocked">
+          <div class="mark" aria-hidden="true">
+            <span class="num">4</span>
+            <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
+          </div>
+          <div class="body">
+            <h2>Add the iPhone shortcut</h2>
+            <p class="sr-state visually-hidden"></p>
+            <div class="when" data-when="blocked"><p class="status">Do step 1 first.</p></div>
+            <div class="when" data-when="old">
+              <p class="status">Your helper is too old to check this step.</p>
+              <p>Run the install command again to restart it:</p>
+              <div class="command">
+                <code>./scripts/install.sh</code>
+                <button type="button" class="copy" data-copy="./scripts/install.sh" aria-label="Copy the install command">Copy</button>
+              </div>
+            </div>
+            <div class="when" data-when="waiting todo unknown">
+              <p class="status" data-for="waiting">Looking for the Resume Podcast shortcut…</p>
+              <p class="status" data-for="todo">The Resume Podcast shortcut is not in Shortcuts yet.</p>
+              <p class="status" data-for="unknown">This page cannot see your shortcuts. If you added Resume Podcast, you can go on.</p>
+              <p>On your Mac, run this in the <code>podcast-sync</code> folder, then click <strong>Add Shortcut</strong>:</p>
+              <div class="command">
+                <code>python3 scripts/make_shortcut.py &amp;&amp; open "shortcut/Resume Podcast.shortcut"</code>
+                <button type="button" class="copy" data-copy='python3 scripts/make_shortcut.py &amp;&amp; open "shortcut/Resume Podcast.shortcut"' aria-label="Copy the shortcut command">Copy</button>
+              </div>
+            </div>
+            <div class="when" data-when="done">
+              <p class="status">Resume Podcast is in Shortcuts. iCloud copies it to your iPhone.</p>
+            </div>
+            <div class="when" data-when="waiting todo unknown done">
+              <p class="hint">Run the shortcut once on your iPhone and allow its prompts. Then, in the Files app, open iCloud Drive → Shortcuts. Touch and hold the <strong>podcast-sync</strong> folder and choose <strong>Keep Downloaded</strong>.</p>
+            </div>
+          </div>
+        </li>
+
+        <!-- 5. Try it -->
+        <li class="step" id="step-try" data-state="blocked">
+          <div class="mark" aria-hidden="true">
+            <span class="num">5</span>
+            <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
+          </div>
+          <div class="body">
+            <h2>Try it</h2>
+            <p class="sr-state visually-hidden"></p>
+            <ul class="directions">
+              <li><span class="device">iPhone → YouTube</span> Play an episode in Apple Podcasts. Then open the same episode on YouTube in Chrome.</li>
+              <li><span class="device">YouTube → iPhone</span> Pause the video. Then run Resume Podcast on your iPhone.</li>
+            </ul>
+            <div class="when" data-when="blocked"><p class="status">Do step 1 first.</p></div>
+            <div class="when" data-when="waiting"><p class="status pulse">Waiting for your first sync…</p></div>
+            <div class="results" id="try-results">
+              <p class="result" id="result-resume" hidden></p>
+              <p class="result" id="result-handoff" hidden></p>
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <section class="all-done" id="all-done" hidden>
+        <h2>You are all set.</h2>
+        <p>You can close this page. To open it again, right-click the Podcast Sync icon and choose <strong>Options</strong>.</p>
+      </section>
+
+      <footer class="foot">
+        <a href="https://github.com/Savar-G/podcast-sync#troubleshooting" target="_blank" rel="noopener">Troubleshooting</a>
+      </footer>
+
+      <p class="visually-hidden" id="announce" aria-live="polite"></p>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>

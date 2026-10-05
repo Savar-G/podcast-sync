@@ -20,3 +20,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then(sendResponse, (e) => sendResponse({ error: String(e) }));
   return true;
 });
+
+// First install only (not updates or reloads): open the setup page.
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === 'install') chrome.runtime.openOptionsPage();
+});
