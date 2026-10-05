@@ -32,7 +32,7 @@ fi
 #    rebuild only when the launcher, the Python path, the repo path or APP_BUILD changes.
 #    Bump APP_BUILD when you change the Info.plist below.
 APP_BUILD=1
-mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$SUPPORT" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 BUILD_KEY="$( { shasum -a 256 "$ROOT/scripts/launcher.c"; echo "$PY|$ROOT|$APP_BUILD"; } | shasum -a 256 | cut -c1-16)"
 if [[ "$(cat "$APP/Contents/Resources/build-key" 2>/dev/null)" != "$BUILD_KEY" ]] || ! codesign --verify "$APP" 2>/dev/null; then
   # The signature seals everything in the bundle, so write it all first, then sign.
@@ -60,7 +60,16 @@ EOF
   echo "Built Podcast Sync Helper.app. macOS will ask once to allow it."
 fi
 
-# 2. Login item.
+# 2. podcasts-remote moves Apple Podcasts on this Mac to your YouTube spot, and iCloud
+#    carries it to the iPhone (config: push_to_podcasts). It lives outside the signed app,
+#    so rebuilding it never asks for permission again. Without it, the Shortcut still works.
+REMOTE="$SUPPORT/podcasts-remote"
+if ! clang -O2 -Wall -o "$REMOTE" "$ROOT/scripts/podcasts_remote.c" -framework CoreFoundation -framework CoreAudio; then
+  rm -f "$REMOTE"
+  echo "Could not build podcasts-remote. On your iPhone, use the Resume Podcast shortcut instead."
+fi
+
+# 3. Login item.
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
