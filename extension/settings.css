@@ -1,0 +1,37 @@
+/* Popup settings section. Scoped to #settings; uses the popup's color tokens when present. */
+#settings {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline, rgba(0, 0, 0, 0.1));
+}
+#settings fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+#settings legend {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+#settings label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+#settings input {
+  margin: 0;
+  accent-color: var(--purple, #b150e2);
+}
+#settings input:focus-visible {
+  outline: 2px solid var(--focus, #b150e2);
+  outline-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  #settings {
+    border-top-color: var(--hairline, rgba(255, 255, 255, 0.12));
+  }
+}

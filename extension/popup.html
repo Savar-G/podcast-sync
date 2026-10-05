@@ -146,7 +146,15 @@
       <p id="recent-status" class="sr-only" role="status" aria-live="polite"></p>
     </section>
 
-    <section id="settings"></section>
+    <section id="settings">
+      <link rel="stylesheet" href="settings.css" />
+      <fieldset>
+        <legend>When you open an episode</legend>
+        <label><input type="radio" name="onOpen" value="jump" /> Jump to the iPhone position</label>
+        <label><input type="radio" name="onOpen" value="marker" /> Only show the marker</label>
+      </fieldset>
+      <script src="settings.js"></script>
+    </section>
     <script src="popup.js"></script>
   </body>
 </html>
