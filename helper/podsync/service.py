@@ -145,17 +145,22 @@ class SyncService:
         if ep is None:
             return {"action": "none", "reason": "not_in_library", "episode": entry["episode"]}
         base = {"episode": ep.title, "show": entry["show"], "podcastTime": ep.playhead, "lastPlayed": ep.last_played}
-        if not ep.last_played or ep.last_played <= youtube_last:
-            return {"action": "none", "reason": "youtube_is_newer", **base}
-        if ep.playhead < 30:
-            return {"action": "none", "reason": "podcast_not_started", **base}
-        if ep.duration and ep.playhead > ep.duration - 60:
-            return {"action": "none", "reason": "podcast_finished", **base}
-
         target = ep.playhead + self._offset(ep.collection_id)
         video_len = (entry.get("video") or {}).get("duration")
         if video_len:
             target = min(target, video_len - 5)
+        target = max(0.0, target)
+        started = ep.playhead >= 30
+        finished = bool(ep.duration and ep.playhead > ep.duration - 60)
+        if started and not finished:  # where the iPhone is, in video time, for the progress-bar marker
+            base.update(markerTime=target, markerLabel=handoff.fmt_time(target))
+        if not ep.last_played or ep.last_played <= youtube_last:
+            return {"action": "none", "reason": "youtube_is_newer", **base}
+        if not started:
+            return {"action": "none", "reason": "podcast_not_started", **base}
+        if finished:
+            return {"action": "none", "reason": "podcast_finished", **base}
+
         if abs(target - current_time) < MIN_SEEK_DELTA:
             return {"action": "none", "reason": "already_there", **base}
         log.info("resume %s at %s (Podcasts played %s)", video_id, handoff.fmt_time(target), ep.last_played)

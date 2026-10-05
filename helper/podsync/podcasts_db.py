@@ -153,19 +153,35 @@ class JsonLibrary:
     """Stand-in for the Podcasts library, loaded from a JSON list of episodes.
 
     Used by the end-to-end test (PODSYNC_FAKE_LIBRARY) so it runs on any Mac.
-    Entries may give last_played_ago (seconds) instead of last_played.
+    Entries may give last_played_ago (seconds) instead of last_played. The file is
+    read again when it changes, so a test can "play on the iPhone" while the helper runs.
     """
 
     def __init__(self, path: Path):
+        self.path = Path(path)
+        self._mtime = None
+        self.rows = {}
+        self._load()
+
+    def _load(self) -> None:
+        path = getattr(self, "path", None)  # tests may build one with rows only
+        if path is None:
+            return
+        try:
+            mtime = path.stat().st_mtime_ns
+        except OSError:
+            return
+        if mtime == getattr(self, "_mtime", None):
+            return
         now = time.time()
         rows = []
-        for e in json.loads(Path(path).read_text()):
+        for e in json.loads(self.path.read_text()):
             e = dict(e)
             if "last_played_ago" in e:
                 e["last_played"] = now - e.pop("last_played_ago")
             rows.append(Episode(**e))
         self.rows = {e.track_id: e for e in rows}
-        self.path = Path(path)
+        self._mtime = mtime
 
     access = True
 
@@ -176,14 +192,18 @@ class JsonLibrary:
         return True
 
     def episodes(self, collection_ids: Iterable[int]) -> List[Episode]:
+        self._load()
         ids = set(collection_ids)
         return [e for e in self.rows.values() if e.collection_id in ids]
 
     def episodes_near(self, unix_time: float, days: float = 10, recent_play_days: float = 90) -> List[Episode]:
+        self._load()
         return [e for e in self.rows.values() if e.pub_date and abs(e.pub_date - unix_time) <= days * 86400]
 
     def episode(self, track_id: int) -> Optional[Episode]:
+        self._load()
         return self.rows.get(track_id)
 
     def recently_played(self, since: float, min_playhead: float = 60, end_margin: float = 60, limit: int = 5) -> List[Episode]:
+        self._load()
         return _newest_in_progress(self.rows.values(), since, min_playhead, end_margin, limit)

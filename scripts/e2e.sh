@@ -29,7 +29,7 @@ fi
 HELPER=$!
 for _ in {1..20}; do curl -sf http://127.0.0.1:47321/health >/dev/null && break; sleep 0.5; done
 
-HANDOFF="$TMP/handoff/resume.json" HELPER_LOG="$TMP/helper.log" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
+HANDOFF="$TMP/handoff/resume.json" HELPER_LOG="$TMP/helper.log" LIBRARY="$TMP/library.json" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
 STATUS=$?
 
 kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null

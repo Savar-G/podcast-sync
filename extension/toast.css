@@ -1,3 +1,4 @@
+/* Podcast Sync on youtube.com. Quiet, YouTube-dark; Apple Podcasts purple is the only accent. */
 .podsync-toast {
   position: absolute;
   left: 12px;
@@ -30,7 +31,7 @@ body > .podsync-toast {
   transform: translateY(0);
   pointer-events: auto;
 }
-.podsync-toast > span:last-of-type {
+.podsync-toast > .podsync-text {
   padding-right: 4px;
 }
 .podsync-dot {
@@ -54,15 +55,110 @@ body > .podsync-toast {
   border-radius: 999px;
   padding: 4px 12px;
   background: rgba(255, 255, 255, 0.12);
-  color: #3ea6ff;
+  color: #f1f1f1;
   font: inherit;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 .podsync-toast button:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+.podsync-toast button:focus-visible {
+  outline: 2px solid #b150e2;
+  outline-offset: 1px;
+}
+
+/* ---- "iPhone was here" marker, inside .ytp-progress-bar ---- */
+.podsync-marker {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 41; /* above .ytp-timed-markers-container (40), below the scrubber */
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.podsync-marker[hidden],
+.ad-showing .podsync-marker {
+  display: none;
+}
+.podsync-marker-hit {
+  position: absolute;
+  left: -8px;
+  top: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.podsync-marker-hit::before {
+  content: '';
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: #b150e2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  transition: height 120ms ease, width 120ms ease;
+}
+.podsync-marker-hit:hover::before,
+.podsync-marker-hit:focus-visible::before {
+  width: 4px;
+  height: 14px;
+}
+.podsync-marker-hit:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+.podsync-marker-tip {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(28, 28, 28, 0.92);
+  color: #fff;
+  font: 500 12px/16px Roboto, 'YouTube Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+.podsync-marker[data-edge='start'] .podsync-marker-tip {
+  transform: translate(-8px, 2px);
+}
+.podsync-marker[data-edge='end'] .podsync-marker-tip {
+  transform: translate(calc(-100% + 8px), 2px);
+}
+.podsync-marker-hit:hover + .podsync-marker-tip,
+.podsync-marker-hit:focus-visible + .podsync-marker-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.podsync-marker[data-edge='start'] .podsync-marker-hit:is(:hover, :focus-visible) + .podsync-marker-tip {
+  transform: translate(-8px, 0);
+}
+.podsync-marker[data-edge='end'] .podsync-marker-hit:is(:hover, :focus-visible) + .podsync-marker-tip {
+  transform: translate(calc(-100% + 8px), 0);
+}
+/* While you point at the marker, its tooltip replaces YouTube's preview. */
+.podsync-marker-hover .ytp-tooltip {
+  opacity: 0 !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .podsync-toast {
+  .podsync-toast,
+  .podsync-marker-hit::before,
+  .podsync-marker-tip {
     transition: none;
   }
   .podsync-busy {
