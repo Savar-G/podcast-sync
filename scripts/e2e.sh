@@ -1,13 +1,13 @@
 #!/bin/zsh
-# Browser end-to-end test: real Chromium + the extension + real YouTube, against a
-# throwaway helper that reads a fake Podcasts library. Runs on any Mac; your real
-# state, Podcasts app and iCloud files are never touched.
+# Browser end-to-end test: real Chromium + a test copy of the extension + real YouTube,
+# against a throwaway helper on its own port that reads a fake Podcasts library.
+# Runs on any Mac. Your installed helper keeps running, and your real state,
+# Podcasts app and iCloud files are never touched.
 #
 #   npm install && npx playwright install chromium   # once
 #   ./scripts/e2e.sh
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LABEL="io.github.podcast-sync.helper"
 TMP="$(mktemp -d)"
 
 # The fake library: "you paused this episode on your iPhone at 40:30, a minute ago".
@@ -20,19 +20,19 @@ EOF
 mkdir -p "$TMP/state"
 echo '{"channels": {"UCy2FPslt0LLPsIV0iukvHpQ": [1836497887]}}' > "$TMP/state/state.json"
 
-RESTART=0
-if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
-  launchctl bootout "gui/$(id -u)/$LABEL"; RESTART=1
-fi
-(cd "$ROOT/helper" && PODSYNC_FAKE_LIBRARY="$TMP/library.json" PODSYNC_STATE_DIR="$TMP/state" \
+# A test copy of the extension that talks to the test port. Same key, so the same ID.
+PORT=47399
+cp -R "$ROOT/extension" "$TMP/extension"
+sed -i '' "s/127.0.0.1:47321/127.0.0.1:$PORT/" "$TMP/extension/manifest.json" "$TMP/extension/background.js"
+
+(cd "$ROOT/helper" && PODSYNC_PORT=$PORT PODSYNC_FAKE_LIBRARY="$TMP/library.json" PODSYNC_STATE_DIR="$TMP/state" \
   PODSYNC_HANDOFF_DIR="$TMP/handoff" PODSYNC_CONFIG=/dev/null/none python3 -m podsync >"$TMP/helper.log" 2>&1) &
 HELPER=$!
-for _ in {1..20}; do curl -sf http://127.0.0.1:47321/health >/dev/null && break; sleep 0.5; done
+for _ in {1..20}; do curl -sf "http://127.0.0.1:$PORT/health" >/dev/null && break; sleep 0.5; done
 
-HANDOFF="$TMP/handoff/resume.json" HELPER_LOG="$TMP/helper.log" LIBRARY="$TMP/library.json" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
+EXT_DIR="$TMP/extension" HANDOFF="$TMP/handoff/resume.json" HELPER_LOG="$TMP/helper.log" LIBRARY="$TMP/library.json" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
 STATUS=$?
 
 kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
-(( RESTART )) && launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$LABEL.plist"
 echo "helper log: $TMP/helper.log"
 exit $STATUS

@@ -104,7 +104,7 @@
             <svg class="check" viewBox="0 0 24 24"><path d="M6.5 12.5l3.5 3.5 7.5-8" /></svg>
           </div>
           <div class="body">
-            <h2>Add the iPhone shortcut</h2>
+            <h2>Set up the iPhone shortcut</h2>
             <p class="sr-state visually-hidden"></p>
             <div class="when" data-when="blocked"><p class="status">Do step 1 first.</p></div>
             <div class="when" data-when="old">
@@ -127,6 +127,14 @@
             </div>
             <div class="when" data-when="done">
               <p class="status">Resume Podcast is in Shortcuts. iCloud copies it to your iPhone.</p>
+            </div>
+            <div class="when" data-when="optional">
+              <p class="status">You do not need this step. When you pause YouTube, the helper sends the position to your iPhone by itself.</p>
+              <p>For a backup, add the Resume Podcast shortcut. On your Mac, run this in the <code>podcast-sync</code> folder, then click <strong>Add Shortcut</strong>:</p>
+              <div class="command">
+                <code>python3 scripts/make_shortcut.py &amp;&amp; open "shortcut/Resume Podcast.shortcut"</code>
+                <button type="button" class="copy" data-copy='python3 scripts/make_shortcut.py &amp;&amp; open "shortcut/Resume Podcast.shortcut"' aria-label="Copy the shortcut command">Copy</button>
+              </div>
             </div>
             <div class="when" data-when="waiting todo unknown done">
               <p class="hint">Run the shortcut once on your iPhone and allow its prompts. Then, in the Files app, open iCloud Drive → Shortcuts. Touch and hold the <strong>podcast-sync</strong> folder and choose <strong>Keep Downloaded</strong>.</p>
