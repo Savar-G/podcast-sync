@@ -156,6 +156,26 @@ body > .podsync-toast {
   opacity: 0 !important;
 }
 
+/* ---- Apple Podcasts progress on thumbnails (ytd-thumbnail a#thumbnail, yt-thumbnail-view-model) ---- */
+.podsync-thumb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.podsync-thumb-fill {
+  height: 100%;
+  background: #b150e2;
+}
+/* Sit on top of YouTube's red "watched" bar (4px), never over it. */
+a#thumbnail:has(ytd-thumbnail-overlay-resume-playback-renderer) > .podsync-thumb,
+yt-thumbnail-view-model:has(yt-thumbnail-overlay-progress-bar-view-model) > .podsync-thumb {
+  bottom: 4px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .podsync-toast,
   .podsync-marker-hit::before,
