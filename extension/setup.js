@@ -9,7 +9,7 @@
     ['helper', 'Start the helper'],
     ['access', 'Allow access to Apple Podcasts'],
     ['sync', 'Turn on Sync Library'],
-    ['shortcut', 'Add the iPhone shortcut'],
+    ['shortcut', 'Set up the iPhone shortcut'],
     ['try', 'Try it'],
   ];
   const SR_STATE = { done: 'Done.', todo: 'To do.', waiting: 'Waiting.', blocked: 'Not ready yet.' };
@@ -84,9 +84,12 @@
     else if (syncConfirmed) out.sync = ['done', 'done-manual'];
     else out.sync = ['todo', 'todo'];
 
+    const pushOn = up && s.pushToPodcasts && s.pushToPodcasts.enabled === true;
     if (!up) out.shortcut = ['blocked', 'blocked'];
     else if (!('shortcutInstalled' in s)) out.shortcut = ['todo', 'old'];
     else if (s.shortcutInstalled === true) out.shortcut = ['done', 'done'];
+    // The helper sends YouTube positions to the iPhone by itself: the shortcut is only a backup.
+    else if (pushOn) out.shortcut = ['done', 'optional'];
     else if (s.shortcutInstalled === false) out.shortcut = ['todo', 'todo'];
     else {
       shortcutUnknownSince ??= Date.now();

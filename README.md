@@ -129,7 +129,7 @@ npm install && npx playwright-core install chromium
 ./scripts/e2e.sh                          # real Chromium + extension + YouTube, against a fake library
 ```
 
-`e2e.sh` stops your installed helper, runs a throwaway one with a fake Podcasts library, and starts yours again. It never touches your real state, Podcasts app, or iCloud files. A pretend Podcasts app takes as long to sync as the real one, so the test also measures the resume time.
+`e2e.sh` runs a throwaway helper on its own port (47399) with a fake Podcasts library, and loads a test copy of the extension that talks to that port. Your installed helper keeps running, and the test never touches your real state, Podcasts app, or iCloud files. A pretend Podcasts app takes as long to sync as the real one, so the test also measures the resume time.
 
 | Path | What |
 |---|---|

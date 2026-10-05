@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PW_CORE || 'playwright-core');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ext = path.resolve(here, '../../extension');
+const ext = process.env.EXT_DIR || path.resolve(here, '../../extension');
 const videoId = process.argv[2] || 'w3-nMklTFjY';
 const expected = Number(process.argv[3] || 2430);
 const shots = process.env.SHOTS || tmpdir();
