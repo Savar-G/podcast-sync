@@ -16,6 +16,9 @@ cat > "$TMP/library.json" <<'EOF'
   "title": "Bringing AI to the Real Economy | Alexander Taubman", "duration": 3729.0,
   "pub_date": 1790769600, "playhead": 2430.0, "last_played_ago": 60}]
 EOF
+# A returning user: the helper already knows which podcast this channel publishes.
+mkdir -p "$TMP/state"
+echo '{"channels": {"UCy2FPslt0LLPsIV0iukvHpQ": [1836497887]}}' > "$TMP/state/state.json"
 
 RESTART=0
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
@@ -26,7 +29,7 @@ fi
 HELPER=$!
 for _ in {1..20}; do curl -sf http://127.0.0.1:47321/health >/dev/null && break; sleep 0.5; done
 
-HANDOFF="$TMP/handoff/resume.json" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
+HANDOFF="$TMP/handoff/resume.json" HELPER_LOG="$TMP/helper.log" node "$ROOT/tests/e2e/extension.e2e.mjs" w3-nMklTFjY 2430
 STATUS=$?
 
 kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null

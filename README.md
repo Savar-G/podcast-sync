@@ -10,7 +10,7 @@ Many podcasts publish the same episode twice: as video on YouTube and as audio i
 
 ## How you use it
 
-- **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump.
+- **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump. If the check takes more than a moment, you see **Checking Apple Podcasts…**.
 - **YouTube → iPhone:** pause the video. The toast says **Sent to iPhone at 13:40**: open Apple Podcasts on your iPhone and press play. If the toast says **Ready on iPhone at 13:40**, tap the **Resume Podcast** shortcut instead, and Apple Podcasts opens the episode with **Play from 13:40**.
 - **Continue on YouTube:** click the extension icon. It lists the episodes you played lately in Apple Podcasts. Click **Watch from 40:30** to open the YouTube video at that time. If the helper does not know the video yet, the button is **Search on YouTube**.
 - **Newest wins:** a position moves to the other side only when it is newer than the last position from that side.
@@ -61,7 +61,7 @@ cd podcast-sync
 ```
 
 - **Matching.** YouTube and podcast titles often differ ("From HOA Management to $4B…" on YouTube is "Bringing AI to the Real Economy" in Podcasts). The helper matches on length, publish date, and shared title words, usually the guest's name. It allows for up to 5 minutes of extra ads in the audio. On a test set of 33 recent videos from 5 shows, it matched every full episode and rejected every clip.
-- **Fresh iPhone positions.** The Mac pulls positions from iCloud only while the Podcasts app runs. The helper opens Podcasts hidden, waits about 2–3 seconds for the sync, and quits it after 10 idle minutes. It never quits a Podcasts window that you opened.
+- **Fresh iPhone positions.** The Mac pulls positions from iCloud only while the Podcasts app runs. When you open YouTube, the helper opens Podcasts hidden, so the sync (about 3 seconds) is done before you pick a video. Then the jump is instant. It does this at most once in 5 minutes, and only after it knows one of your shows. It quits Podcasts after 10 idle minutes. It never quits a Podcasts window that you opened.
 - **No tap on the iPhone.** Apple Podcasts sends a changed position to iCloud at once, and your iPhone gets it from there. So when you pause or leave a matched video, the helper tells Apple Podcasts on your Mac to load that episode, paused, and to go to the same second. Nothing plays and no window opens. These are the same requests that the Podcasts notification buttons and Control Center send. A small tool, `podcasts-remote` (built from [`scripts/podcasts_remote.c`](scripts/podcasts_remote.c)), sends them. The helper then reads the library to make sure that Podcasts recorded the new position. Only then does the toast say **Sent to iPhone**.
   - It skips the push if Podcasts plays on your Mac, if the spot is within 15 seconds of the Podcasts position, if it is in the last minute of the episode (Podcasts would mark it as played), or if you listened in Apple Podcasts after the video last moved (an old paused tab that you close does not undo a newer iPhone listen).
   - At most one push per episode every 20 seconds. If you pause again during that time, the newest spot goes when the time is up.
@@ -119,7 +119,7 @@ npm install && npx playwright-core install chromium
 ./scripts/e2e.sh                          # real Chromium + extension + YouTube, against a fake library
 ```
 
-`e2e.sh` stops your installed helper, runs a throwaway one with a fake Podcasts library, and starts yours again. It never touches your real state, Podcasts app, or iCloud files.
+`e2e.sh` stops your installed helper, runs a throwaway one with a fake Podcasts library, and starts yours again. It never touches your real state, Podcasts app, or iCloud files. A pretend Podcasts app takes as long to sync as the real one, so the test also measures the resume time.
 
 | Path | What |
 |---|---|
