@@ -24,3 +24,186 @@ chrome.runtime.sendMessage({ type: 'status' }, (s) => {
     ` in ${h.episode} (${h.show}), ${ago ? `${ago} min ago` : 'just now'}.`
   );
 });
+
+// ---- Continue on YouTube ------------------------------------------------
+// GET the fast list first (no Podcasts app refresh), then ask once more with
+// {refresh: true} so positions from the iPhone arrive a few seconds later.
+
+const list = document.getElementById('recent');
+const note = document.getElementById('recent-note');
+const liveStatus = document.getElementById('recent-status');
+const updating = document.getElementById('updating');
+
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+};
+
+function fmtTime(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+function fmtAgo(unix) {
+  if (!unix) return '';
+  const min = Math.max(0, Math.round((Date.now() / 1000 - unix) / 60));
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+function ask(payload, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    chrome.runtime.sendMessage({ type: 'recent', payload }, (r) => {
+      void chrome.runtime.lastError;
+      clearTimeout(timer);
+      resolve(r ?? null);
+    });
+  });
+}
+
+function safeUrl(url, hostSuffix) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && (u.hostname === hostSuffix || u.hostname.endsWith(`.${hostSuffix}`)) ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function open(url) {
+  const safe = safeUrl(url, 'youtube.com');
+  if (!safe) return;
+  chrome.tabs.create({ url: safe });
+  window.close();
+}
+
+function artwork(row) {
+  const box = el('div', { className: 'art' });
+  const initial = (row.show || '?').trim().charAt(0).toUpperCase();
+  const src = safeUrl(row.artwork, 'mzstatic.com');
+  if (!src) {
+    box.textContent = initial;
+    return box;
+  }
+  const img = el('img', { src, alt: '', width: 48, height: 48, loading: 'lazy', decoding: 'async', referrerPolicy: 'no-referrer' });
+  img.addEventListener('error', () => box.replaceChildren(initial));
+  box.append(img);
+  return box;
+}
+
+function item(row, i) {
+  const titleId = `ep-${i}`;
+  const pct = row.duration ? Math.min(100, Math.max(0, (row.playhead / row.duration) * 100)) : 0;
+  const position = row.duration ? `${fmtTime(row.playhead)} of ${fmtTime(row.duration)}` : fmtTime(row.playhead);
+  const ago = fmtAgo(row.lastPlayed);
+  const button = el('button', {
+    type: 'button',
+    className: row.videoId ? 'watch' : 'watch search',
+    textContent: row.videoId ? `Watch from ${row.label}` : 'Search on YouTube',
+  });
+  button.setAttribute('aria-describedby', titleId);
+  button.dataset.track = String(row.trackId);
+  button.addEventListener('click', () => open(row.url));
+
+  const bar = el('div', { className: 'bar' }, el('span'));
+  bar.firstChild.style.width = `${pct.toFixed(1)}%`;
+  bar.setAttribute('aria-hidden', 'true');
+
+  // "Show · 2 h ago" on top keeps "40:30 of 1:02:09" and the button on one line.
+  const kicker = el('p', { className: 'kicker' }, el('span', { className: 'show', textContent: row.show, title: row.show }));
+  if (ago) kicker.append(el('span', { className: 'ago', textContent: `· ${ago}` }));
+
+  return el(
+    'li',
+    { className: 'item' },
+    artwork(row),
+    el(
+      'div',
+      { className: 'meta' },
+      kicker,
+      el('p', { className: 'title', id: titleId, textContent: row.episode, title: row.episode }),
+      el('div', { className: 'foot' }, el('div', { className: 'progress' }, bar, el('p', { className: 'sub', textContent: position })), button)
+    )
+  );
+}
+
+function skeleton() {
+  note.replaceChildren();
+  list.setAttribute('aria-busy', 'true');
+  const line = (cls) => el('div', { className: `line ${cls}` });
+  list.replaceChildren(
+    ...[0, 1, 2].map(() =>
+      el('li', { className: 'item skeleton' }, el('div', { className: 'art' }), el('div', { className: 'meta' }, line('short'), line('long'), line('mid'), line('pill')))
+    )
+  );
+  list.querySelectorAll('li').forEach((li) => li.setAttribute('aria-hidden', 'true'));
+  liveStatus.textContent = 'Loading recent episodes…';
+}
+
+function showNote(text, retry) {
+  list.removeAttribute('aria-busy');
+  list.replaceChildren();
+  const children = [el('p', { textContent: text })];
+  if (retry) {
+    const b = el('button', { type: 'button', className: 'watch search', textContent: 'Try Again' });
+    b.addEventListener('click', load);
+    children.push(b);
+  }
+  note.replaceChildren(el('div', { className: 'note' }, ...children));
+  liveStatus.textContent = text;
+}
+
+const signature = (rows) => JSON.stringify(rows.map((r) => [r.trackId, Math.round(r.playhead), r.url, r.artwork]));
+let shown = '';
+
+function render(resp) {
+  if (resp?.error === 'not found') {
+    showNote('Your helper is older than this extension. Run scripts/install.sh again.', true);
+    return false;
+  }
+  if (!resp || !Array.isArray(resp.episodes)) {
+    showNote('Can’t reach the Podcast Sync helper. Make sure it is running, then try again.', true);
+    return false;
+  }
+  if (resp.error === 'library_unreadable') {
+    showNote('macOS has not allowed the helper to read Apple Podcasts yet. See the README.', true);
+    return false;
+  }
+  if (!resp.episodes.length) {
+    showNote('Nothing played lately in Apple Podcasts.');
+    return true;
+  }
+  const sig = signature(resp.episodes);
+  if (sig === shown) return true;
+  const focused = document.activeElement?.dataset?.track;
+  note.replaceChildren();
+  list.removeAttribute('aria-busy');
+  list.replaceChildren(...resp.episodes.map(item));
+  shown = sig;
+  if (focused) list.querySelector(`button[data-track="${CSS.escape(focused)}"]`)?.focus();
+  const n = resp.episodes.length;
+  liveStatus.textContent = `${n} recent ${n === 1 ? 'episode' : 'episodes'}.`;
+  return true;
+}
+
+async function load() {
+  shown = '';
+  skeleton();
+  const ok = render(await ask({}, 15000));
+  if (!ok || !shown) return; // nothing to refresh: the helper is down, or the list is empty
+  updating.classList.add('on');
+  const fresh = await ask({ refresh: true }, 30000);
+  updating.classList.remove('on');
+  if (fresh && Array.isArray(fresh.episodes) && !fresh.error) render(fresh);
+}
+
+load();

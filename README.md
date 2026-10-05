@@ -12,6 +12,7 @@ Many podcasts publish the same episode twice: as video on YouTube and as audio i
 
 - **iPhone → YouTube:** open the episode on YouTube in Chrome. It jumps to where you stopped in Apple Podcasts. An **Undo** button is there if you do not want the jump.
 - **YouTube → iPhone:** pause the video, then tap the **Resume Podcast** shortcut on your iPhone. Apple Podcasts opens the episode with **Play from 13:40**.
+- **Continue on YouTube:** click the extension icon. It lists the episodes you played lately in Apple Podcasts. Click **Watch from 40:30** to open the YouTube video at that time. If the helper does not know the video yet, the button is **Search on YouTube**.
 - **Newest wins:** a position moves to the other side only when it is newer than the last position from that side.
 
 It works for any show you follow in Apple Podcasts that also posts full episodes on YouTube. There is nothing to configure: the first time you watch an episode, the helper finds the show and remembers the channel.
@@ -66,7 +67,7 @@ cd podcast-sync
 - **Everything stays on your Mac and in your own iCloud.** No servers, no accounts, no analytics.
 - The helper opens the Podcasts library **read-only**. It never changes your library.
 - For the setup page, the helper checks if a shortcut named "Resume Podcast" exists (`shortcuts list`), and reads the time Podcasts last synced with iCloud. It does not save or send this data.
-- The only network requests: the helper loads the public YouTube page of a video you open (for its channel, length, and date), and Apple's public podcast lookup API when an episode is too new for your Mac library.
+- The only network requests: the helper loads the public YouTube page of a video you open (for its channel, length, and date), and Apple's public podcast lookup API when an episode is too new for your Mac library. For **Continue on YouTube**, the helper also loads the public upload feed of YouTube channels it already knows and the pages of new uploads on them, and the popup loads show artwork from Apple's image server.
 - The helper listens on `127.0.0.1` only. It accepts requests from this extension (its ID is pinned in `manifest.json`) or from a local tool such as `curl`. It refuses web pages, other extensions, and DNS-rebinding attempts.
 - The extension can talk only to `http://127.0.0.1:47321` and runs only on `youtube.com`.
 - Local files: `~/Library/Application Support/podcast-sync/` (match cache), `~/Library/Logs/podcast-sync.log`, and the link file in iCloud Drive.
