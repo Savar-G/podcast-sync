@@ -33,6 +33,38 @@ const list = document.getElementById('recent');
 const note = document.getElementById('recent-note');
 const liveStatus = document.getElementById('recent-status');
 const updating = document.getElementById('updating');
+const undoBar = document.getElementById('undo');
+const undoText = document.getElementById('undo-text');
+const undoBtn = document.getElementById('undo-btn');
+
+// ---- Hidden episodes ------------------------------------------------------
+// The × on a row hides that episode until you play it again (a newer lastPlayed).
+// The list lives in chrome.storage.local; the helper gets it with each request, so it
+// can fill the freed places. Old entries drop off: the list only covers 14 days anyway.
+const HIDDEN_KEY = 'hiddenRecent';
+const HIDDEN_TTL_MS = 30 * 86400 * 1000;
+const hidden = {}; // trackId -> {lastPlayed, at}
+const hiddenReady = new Promise((resolve) => {
+  try {
+    chrome.storage.local.get(HIDDEN_KEY, (r) => {
+      void chrome.runtime.lastError;
+      const now = Date.now();
+      for (const [id, v] of Object.entries(r?.[HIDDEN_KEY] || {})) {
+        if (/^\d{1,20}$/.test(id) && Number.isFinite(v?.lastPlayed) && now - v.at < HIDDEN_TTL_MS) hidden[id] = v;
+      }
+      resolve();
+    });
+  } catch {
+    resolve();
+  }
+});
+const saveHidden = () => chrome.storage.local.set({ [HIDDEN_KEY]: hidden }, () => void chrome.runtime.lastError);
+const hiddenPayload = () => Object.fromEntries(Object.entries(hidden).map(([id, v]) => [id, v.lastPlayed]));
+const isHidden = (row) => {
+  const h = hidden[String(row.trackId)];
+  return !!h && (row.lastPlayed || 0) <= h.lastPlayed + 1;
+};
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const el = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
@@ -100,6 +132,49 @@ function artwork(row) {
   return box;
 }
 
+function closeIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 10 10');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M1 1l8 8M9 1L1 9');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.6');
+  path.setAttribute('stroke-linecap', 'round');
+  svg.append(path);
+  return svg;
+}
+
+function hideRow(row, li) {
+  const id = String(row.trackId);
+  hidden[id] = { lastPlayed: row.lastPlayed || 0, at: Date.now() };
+  saveHidden();
+  const done = () => {
+    shown = '';
+    render(lastResp);
+    // A newer helper fills the freed place with the next recent episode.
+    ask({ hidden: hiddenPayload() }, 15000).then((r) => r && Array.isArray(r.episodes) && !r.error && render(r));
+  };
+  if (reduceMotion) done();
+  else {
+    li.classList.add('leaving');
+    setTimeout(done, 170);
+  }
+  undoText.textContent = 'Hidden until you play it again.';
+  undoBtn.onclick = () => {
+    delete hidden[id];
+    saveHidden();
+    undoBar.hidden = true;
+    shown = '';
+    render(lastResp);
+    list.querySelector(`button.watch[data-track="${CSS.escape(id)}"]`)?.focus();
+  };
+  undoBar.hidden = false;
+  undoBtn.focus();
+  liveStatus.textContent = `Hidden: ${row.episode}.`;
+}
+
 function item(row, i) {
   const titleId = `ep-${i}`;
   const pct = row.duration ? Math.min(100, Math.max(0, (row.playhead / row.duration) * 100)) : 0;
@@ -121,8 +196,11 @@ function item(row, i) {
   // "Show · 2 h ago" on top keeps "40:30 of 1:02:09" and the button on one line.
   const kicker = el('p', { className: 'kicker' }, el('span', { className: 'show', textContent: row.show, title: row.show }));
   if (ago) kicker.append(el('span', { className: 'ago', textContent: `· ${ago}` }));
+  const hide = el('button', { type: 'button', className: 'hide', title: 'Hide until you play it again' }, closeIcon());
+  hide.setAttribute('aria-label', `Hide ${row.episode}`);
+  kicker.append(hide);
 
-  return el(
+  const li = el(
     'li',
     { className: 'item' },
     artwork(row),
@@ -134,6 +212,8 @@ function item(row, i) {
       el('div', { className: 'foot' }, el('div', { className: 'progress' }, bar, el('p', { className: 'sub', textContent: position })), button)
     )
   );
+  hide.addEventListener('click', () => hideRow(row, li));
+  return li;
 }
 
 function skeleton() {
@@ -164,6 +244,7 @@ function showNote(text, retry) {
 
 const signature = (rows) => JSON.stringify(rows.map((r) => [r.trackId, Math.round(r.playhead), r.url, r.artwork]));
 let shown = '';
+let lastResp = null;
 
 function render(resp) {
   if (resp?.error === 'not found') {
@@ -178,19 +259,22 @@ function render(resp) {
     showNote('macOS has not allowed the helper to read Apple Podcasts yet. See the README.', true);
     return false;
   }
-  if (!resp.episodes.length) {
-    showNote('Nothing played lately in Apple Podcasts.');
+  lastResp = resp;
+  const rows = resp.episodes.filter((r) => !isHidden(r)); // older helpers do not filter
+  if (!rows.length) {
+    showNote(resp.episodes.length ? 'Nothing else to continue. Hidden episodes come back when you play them again.' : 'Nothing played lately in Apple Podcasts.');
+    shown = '';
     return true;
   }
-  const sig = signature(resp.episodes);
+  const sig = signature(rows);
   if (sig === shown) return true;
   const focused = document.activeElement?.dataset?.track;
   note.replaceChildren();
   list.removeAttribute('aria-busy');
-  list.replaceChildren(...resp.episodes.map(item));
+  list.replaceChildren(...rows.map(item));
   shown = sig;
   if (focused) list.querySelector(`button[data-track="${CSS.escape(focused)}"]`)?.focus();
-  const n = resp.episodes.length;
+  const n = rows.length;
   liveStatus.textContent = `${n} recent ${n === 1 ? 'episode' : 'episodes'}.`;
   return true;
 }
@@ -198,10 +282,11 @@ function render(resp) {
 async function load() {
   shown = '';
   skeleton();
-  const ok = render(await ask({}, 15000));
-  if (!ok || !shown) return; // nothing to refresh: the helper is down, or the list is empty
+  await hiddenReady;
+  const ok = render(await ask({ hidden: hiddenPayload() }, 15000));
+  if (!ok || !lastResp?.episodes?.length) return; // nothing to refresh: the helper is down, or nothing was played
   updating.classList.add('on');
-  const fresh = await ask({ refresh: true }, 30000);
+  const fresh = await ask({ refresh: true, hidden: hiddenPayload() }, 30000);
   updating.classList.remove('on');
   if (fresh && Array.isArray(fresh.episodes) && !fresh.error) render(fresh);
 }
