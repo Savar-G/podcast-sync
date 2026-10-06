@@ -29,6 +29,16 @@
         "toast.css"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "captions.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "action": {
