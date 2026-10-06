@@ -4,7 +4,7 @@
 
 Free and open source. No account, no subscription, and no YouTube Premium.
 
-<img src="docs/toast-resumed.png" alt="A small message on a YouTube video: Resumed at 40:30 from Apple Podcasts, with an Undo button" width="372">
+<img src="docs/demo.gif" alt="Demo: pause a podcast on YouTube at 40:30, and the iPhone shows Apple Podcasts at 40:30. Listen to 58:12 on the iPhone, open YouTube again, and the video jumps to 58:12" width="720">
 
 ## The problem
 
@@ -22,6 +22,8 @@ Podcast Sync does this for you, in both directions.
 
 **From your iPhone to YouTube.** Open the same episode on YouTube. The video jumps to where you stopped on your iPhone. If you do not want the jump, click **Undo**.
 
+<img src="docs/toast-resumed.png" alt="A small message on a YouTube video: Resumed at 40:30 from Apple Podcasts, with an Undo button" width="372">
+
 **It lines up the video and the audio.** The video and the audio of an episode often have different intros or ads, so the same moment is at different times. If Apple Podcasts has a transcript of the episode, Podcast Sync compares it with the YouTube captions, word by word, and finds the same moment on both sides. If there is no transcript, click **−15 s** or **+15 s** once for each show (see below).
 
 **It finds the episode for you.** YouTube and Apple Podcasts often give the same episode different titles. Podcast Sync compares the length, the date, and the guest's name, so you do not set anything up for each show. It works with any show you follow in Apple Podcasts that also posts full episodes on YouTube.
@@ -37,6 +39,8 @@ Podcast Sync does this for you, in both directions.
   <img src="docs/toast-nudge.png" alt="Message: Saved. This show's video runs 15 s ahead of the audio. Buttons: −15 s, +15 s, Undo" width="580">
 
 - **Continue on YouTube.** Click the Podcast Sync icon in Chrome. It lists the episodes you played lately on your iPhone. Click **Watch from 40:30** to open the video at that time. To remove an episode from the list, click its **×**. It stays hidden until you play it again.
+
+  <img src="docs/popup.png" alt="The Podcast Sync popup: Continue on YouTube lists three episodes with their progress, a Watch from button or a Search on YouTube button, and an × to hide each one" width="372">
 - **Progress on thumbnails.** On the YouTube home page and in search results, a thin purple bar under a video shows how far you got in Apple Podcasts.
 - **Your choice.** If you do not want the video to jump by itself, click the Podcast Sync icon and choose **Only show the marker**.
 
@@ -97,6 +101,18 @@ python3 scripts/make_shortcut.py && open "shortcut/Resume Podcast.shortcut"
 
 Click **Add Shortcut**. It appears on your iPhone after a moment. On the iPhone, run **Resume Podcast** once and allow its questions. When you see **Ready on iPhone**, tap the shortcut. Apple Podcasts opens the episode with **Play from 13:40**.
 
+## Update to a new version
+
+1. **Get the new files.** If you downloaded the ZIP, download it again and put the new folder where the old one was. If you use `git`, run `git pull` in the Podcast Sync folder.
+2. **Update the helper.** In Terminal, in the Podcast Sync folder, run:
+
+   ```bash
+   ./scripts/install.sh
+   ```
+
+   If the folder is in a new place, macOS asks for access again. Click **Allow**.
+3. **Update the extension.** In Chrome, go to `chrome://extensions` and click the reload icon on **Podcast Sync**. Then reload your open YouTube tabs.
+
 ## Questions
 
 **Does it cost anything?** No. It is free and open source.
@@ -118,6 +134,8 @@ Click **Add Shortcut**. It appears on your iPhone after a moment. On the iPhone,
 | What you see | What to do |
 |---|---|
 | Nothing happens on YouTube | Reload the YouTube page. Chrome adds the extension only to pages that you open after you install it. |
+| You updated, but a new feature does not show | Do all three steps in [Update to a new version](#update-to-a-new-version). Chrome keeps the old extension until you reload it, and a popup that is open keeps the old version until you close it. |
+| The video lands a few seconds early or late | Click **−15 s** or **+15 s**. Podcast Sync remembers it for that show, or for that episode if it is lined up by transcript. |
 | The extension says the helper is not running | Do step 3 of the setup again. |
 | The extension says macOS has not allowed it to read Podcasts | Open **System Settings → Privacy & Security** and allow **Podcast Sync Helper**. Or do step 3 again and click **Allow**. |
 | The video does not jump | You watched further on YouTube than on your iPhone, so YouTube has the newer position. Or the two positions are less than 15 seconds apart. |
