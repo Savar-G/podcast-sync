@@ -6,6 +6,7 @@ last position we saw from that side.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -65,6 +66,12 @@ class SyncService:
         self.status_extras: List[Callable[[], Dict]] = []
         # fn(collection_id) -> seconds, added to the configured offset (e.g. a learned one).
         self.offset_extras: List[Callable[[int], float]] = []
+        # Objects with to_podcast(video_id, track_id, youtube_time) and
+        # to_youtube(video_id, track_id, podcast_time), each returning seconds or None.
+        # The first answer wins; with none, the show's constant offset is used.
+        self.position_mappers: List[Any] = []
+        # POST /<name> -> largest body in bytes, for the few endpoints that need more than the default.
+        self.body_limits: Dict[str, int] = {}
         from . import features
 
         features.load_all(self)
@@ -133,6 +140,26 @@ class SyncService:
             offset += extra(collection_id)
         return offset
 
+    def _convert(self, direction: str, video_id: Optional[str], track_id: int, collection_id: int, t: float) -> Tuple[float, str]:
+        """Map a position between the video and the audio: (seconds, "transcript" | "offset")."""
+        if video_id:
+            for mapper in self.position_mappers:
+                try:
+                    got = getattr(mapper, direction)(video_id, track_id, t)
+                except Exception:
+                    log.exception("position mapper failed")
+                    continue
+                if got is not None and math.isfinite(got):
+                    return float(got), getattr(mapper, "name", "map")
+        offset = self._offset(collection_id)
+        return (t + offset if direction == "to_youtube" else t - offset), "offset"
+
+    def to_youtube_time(self, video_id: Optional[str], track_id: int, collection_id: int, podcast_time: float) -> float:
+        return self._convert("to_youtube", video_id, track_id, collection_id, podcast_time)[0]
+
+    def to_podcast_time(self, video_id: Optional[str], track_id: int, collection_id: int, youtube_time: float) -> float:
+        return self._convert("to_podcast", video_id, track_id, collection_id, youtube_time)[0]
+
     def match(self, video_id: str, hint: Optional[Dict] = None) -> Dict:
         entry = self.resolve(video_id, hint)
         if not entry.get("track_id"):
@@ -150,8 +177,8 @@ class SyncService:
         ep = self.app.refresh(track_id)
         if ep is None:
             return {"action": "none", "reason": "not_in_library", "episode": entry["episode"]}
-        base = {"episode": ep.title, "show": entry["show"], "podcastTime": ep.playhead, "lastPlayed": ep.last_played}
-        target = ep.playhead + self._offset(ep.collection_id)
+        target, sync = self._convert("to_youtube", video_id, track_id, ep.collection_id, ep.playhead)
+        base = {"episode": ep.title, "show": entry["show"], "podcastTime": ep.playhead, "lastPlayed": ep.last_played, "sync": sync}
         video_len = (entry.get("video") or {}).get("duration")
         if video_len:
             target = min(target, video_len - 5)
@@ -181,9 +208,11 @@ class SyncService:
         now = time.time()
         self.state.set_progress(track_id, {"time": current_time, "at": now, "video_id": video_id})
 
-        podcast_time = max(0.0, current_time - self._offset(collection_id))
+        podcast_time, sync = self._convert("to_podcast", video_id, track_id, collection_id, current_time)
+        podcast_time = max(0.0, podcast_time)
         result = {
             "matched": True,
+            "sync": sync,
             "episode": entry["episode"],
             "show": entry["show"],
             "podcastTime": podcast_time,

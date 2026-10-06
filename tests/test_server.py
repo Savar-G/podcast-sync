@@ -1,3 +1,4 @@
+import http.client
 import json
 import sys
 import threading
@@ -23,7 +24,9 @@ class StubService:
             "match": lambda b: video_args(b) and {"matched": False, "reason": "stub"},
             "resume": resume,
             "progress": lambda b: video_args(b) and {"matched": False},
+            "captions": lambda b: {"words": len(b.get("words", []))},
         }
+        self.body_limits = {"captions": 2 * 1024 * 1024}
 
     def status(self):
         return {"ok": True}
@@ -88,6 +91,34 @@ class ServerTest(unittest.TestCase):
     def test_large_body_is_refused(self):
         code, _ = self.post("/resume", None, {"X-Podsync": "1"}, data=b"x" * 20000)
         self.assertEqual(code, 413)
+
+    def test_one_endpoint_may_take_a_larger_body(self):
+        words = [[i * 0.4, "word"] for i in range(20000)]  # ~330 KB
+        code, body = self.post("/captions", {"words": words}, {"X-Podsync": "1"})
+        self.assertEqual((code, body), (200, {"words": 20000}))
+        # Refused from the header alone, before the body is read.
+        self.assertEqual(self.claim("/captions", 2 * 1024 * 1024 + 1), 413)
+        self.assertEqual(self.claim("/resume", 300000), 413, "other endpoints keep the small limit")
+
+    def test_larger_body_still_needs_a_trusted_caller(self):
+        for headers in ({"Origin": "https://evil.example"}, {}, {"X-Podsync": "1", "Host": "evil.example"}):
+            code, _ = self.post("/captions", {"words": []}, headers)
+            self.assertEqual(code, 403, headers)
+
+    def claim(self, path, length):
+        """Send only the headers of a POST that claims a body of `length` bytes; return the status."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        try:
+            conn.putrequest("POST", path)
+            conn.putheader("X-Podsync", "1")
+            conn.putheader("Content-Length", str(length))
+            conn.endheaders()
+            return conn.getresponse().status
+        finally:
+            conn.close()
+
+    def test_negative_length_is_refused(self):
+        self.assertEqual(self.claim("/captions", -1), 400)
 
     def test_health(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health") as r:

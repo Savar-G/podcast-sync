@@ -22,6 +22,8 @@ Podcast Sync does this for you, in both directions.
 
 **From your iPhone to YouTube.** Open the same episode on YouTube. The video jumps to where you stopped on your iPhone. If you do not want the jump, click **Undo**.
 
+**It lines up the video and the audio.** The video and the audio of an episode often have different intros or ads, so the same moment is at different times. If Apple Podcasts has a transcript of the episode, Podcast Sync compares it with the YouTube captions, word by word, and finds the same moment on both sides. If there is no transcript, click **−15 s** or **+15 s** once for each show (see below).
+
 **It finds the episode for you.** YouTube and Apple Podcasts often give the same episode different titles. Podcast Sync compares the length, the date, and the guest's name, so you do not set anything up for each show. It works with any show you follow in Apple Podcasts that also posts full episodes on YouTube.
 
 ### Extras
@@ -30,7 +32,7 @@ Podcast Sync does this for you, in both directions.
 
   <img src="docs/marker.png" alt="A purple mark on the YouTube progress bar, with the label: iPhone, 40:30, 1 min ago" width="660">
 
-- **Fix the timing with one click.** Some shows add a different intro or ads to the video. If the video starts a little early or late, click **−15 s** or **+15 s**. Podcast Sync remembers this for that show.
+- **Fix the timing with one click.** Some shows add a different intro or ads to the video. If the video starts a little early or late, click **−15 s** or **+15 s**. Podcast Sync remembers this for that show. If the episode is lined up by transcript, it remembers it for that episode only.
 
   <img src="docs/toast-nudge.png" alt="Message: Saved. This show's video runs 15 s ahead of the audio. Buttons: −15 s, +15 s, Undo" width="580">
 
@@ -109,7 +111,7 @@ Click **Add Shortcut**. It appears on your iPhone after a moment. On the iPhone,
 
 **Does it work on Windows, Android, or Spotify?** No. It needs a Mac, an iPhone, and Apple Podcasts.
 
-**What if YouTube and the podcast are a few seconds apart?** Click **−15 s** or **+15 s** once. Podcast Sync remembers the difference for that show.
+**What if YouTube and the podcast are a few seconds apart?** Click **−15 s** or **+15 s** once. Podcast Sync remembers the difference for that show. When Apple Podcasts has a transcript of the episode, Podcast Sync usually gets the time right without your help.
 
 ## Something is not working
 
@@ -165,7 +167,15 @@ Podcast Sync has three parts:
   - It skips the push if Podcasts is playing on your Mac, if the spot is within 15 seconds of the Podcasts position, if it is in the last minute of the episode (Podcasts would mark it as played), or if you listened in Apple Podcasts after the video last moved. So an old paused tab that you close cannot undo a newer iPhone listen.
   - At most one push per episode every 20 seconds. If you pause again during that time, the newest spot goes when the time is up.
 - **Newest wins.** A position moves to the other side only if it is newer than the last position from that side.
-- **Learned offsets.** Each **−15 s** / **+15 s** click adds to that show's offset in the helper's state. The offset applies to the jump, the push to the iPhone, and the iPhone link.
+- **Transcript anchoring.** Apple Podcasts keeps word-timed transcripts (TTML) of many episodes in `~/Library/Group Containers/243LU875E5.groups.com.apple.podcasts/Library/Cache/Assets/TTML/`. The file name holds the episode's store track ID. When the helper has a transcript for a matched episode, the extension sends the video's captions to the helper once:
+  - YouTube does not serve captions to a plain request. So `extension/captions.js` runs in the page, turns captions on through the player for a moment (hidden), reads the player's own caption request, and turns captions off again. If your captions are already on, it changes nothing. It skips ads.
+  - The helper finds word sequences (4 words) that occur once in each transcript, keeps the ones in the same order on both sides, and groups them into segments with a steady time difference. A new segment starts where an ad or intro is in only one version. The result is a short list of anchor pairs (video time, audio time), about one every 15 seconds.
+  - Inside a segment, a time maps by interpolation between anchors. Between segments, it uses the nearest anchor, because the difference jumps there. The map replaces the show offset for the jump, the push to the iPhone, the iPhone link, and **Continue on YouTube**. It is not added to the show offset.
+  - The helper trusts a map only with at least 20 matches that cover at least half of the video's minutes. Otherwise it uses the show offset.
+  - The first jump waits at most 2.5 seconds for a new map. If the map comes later and moves the jump by more than 3 seconds, the extension corrects the jump while its message still shows.
+  - Some audio files have ads that Apple's transcript does not have (dynamically inserted ads). The helper sees this when the transcript is more than 2 seconds longer or shorter than the episode, and marks the map as approximate. With a map, **−15 s** / **+15 s** is kept for that episode only.
+  - Measured on two real episodes: one lines up with no offset. In the other, the difference is 7.3 s for the first 35 minutes, then 6.4 s the other way after an ad read. A constant offset cannot follow that; the transcript map finds both parts.
+- **Learned offsets.** Without a transcript map, each **−15 s** / **+15 s** click adds to that show's offset in the helper's state. The offset applies to the jump, the push to the iPhone, and the iPhone link.
 - **Thumbnails.** The extension sends the video IDs on a page to the helper, at most 60 at a time. The helper answers only for videos it matched before, from your Mac's library. It makes no network request.
 - **The fallback link** is a standard Apple Podcasts link with a time (`…?i=<episode>&t=820`). The helper writes it on every pause, so the **Resume Podcast** shortcut always works.
 
@@ -178,10 +188,11 @@ Podcast Sync has three parts:
   - The helper loads the public YouTube page of a video you open.
   - It uses Apple's public podcast lookup API when an episode is too new for your Mac library.
   - For **Continue on YouTube**, it loads the public upload feeds of YouTube channels it already knows, and the pages of new uploads on them. The popup loads show artwork from Apple's image server.
+- **Transcripts and captions stay on your Mac.** The helper reads Apple's cached transcripts read-only, and gets the YouTube captions from your own browser. It keeps both in memory for one request only. It saves only the anchor pairs (numbers, no words) in `anchors.json`.
 - For the setup page, the helper checks if a shortcut named "Resume Podcast" exists (`shortcuts list`), and reads the time Podcasts last synced with iCloud. It does not save or send this data.
 - The helper listens on `127.0.0.1` only. It accepts requests from this extension (its ID is pinned in `manifest.json`) or from a local tool such as `curl`. It refuses web pages, other extensions, and DNS-rebinding attempts.
-- The extension can talk only to `http://127.0.0.1:47321`, and it runs only on `youtube.com`.
-- **Local files:** `~/Library/Application Support/podcast-sync/` (match cache, the helper app, `podcasts-remote`), `~/Library/Logs/podcast-sync.log`, and the link file in iCloud Drive.
+- The extension can talk only to `http://127.0.0.1:47321`, and it runs only on `youtube.com`. On YouTube, `captions.js` runs in the page so it can use the player. It answers only to `content.js` on the same page.
+- **Local files:** `~/Library/Application Support/podcast-sync/` (match cache, transcript anchors, the helper app, `podcasts-remote`), `~/Library/Logs/podcast-sync.log`, and the link file in iCloud Drive.
 
 ## Configuration (optional)
 

@@ -193,8 +193,8 @@ class ContinueWatching:
 
     # ---- rows -------------------------------------------------------------
     def row(self, ep: Episode, video: Optional[Tuple[str, Optional[float]]]) -> Dict:
-        youtube_time = max(0.0, ep.playhead + self.service._offset(ep.collection_id))
         video_id, video_len = video or (None, None)
+        youtube_time = max(0.0, self.service.to_youtube_time(video_id, ep.track_id, ep.collection_id, ep.playhead))
         if video_len:
             youtube_time = max(0.0, min(youtube_time, video_len - 5))
         return {

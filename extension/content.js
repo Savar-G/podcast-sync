@@ -1,14 +1,20 @@
-// Runs on youtube.com. Four jobs:
+// Runs on youtube.com. Five jobs:
 //  1. When a matched episode opens, jump to where Apple Podcasts left off (if that is newer).
 //  2. Mark the iPhone position on the progress bar ("iPhone was here").
 //  3. While you watch, report the position so the helper can hand it to your iPhone.
 //  4. Show Apple Podcasts progress on the thumbnails of episodes you started.
+//  5. If Apple has a transcript of the episode, send the video's captions to the helper
+//     once, so it can line the two up word by word (captions.js reads them from the player).
 (() => {
   const HEARTBEAT_MS = 15000;
   const MIN_JUMP = 15;
   const WARM_EVERY_MS = 5 * 60 * 1000; // across all tabs
   const BUSY_TOAST_MS = 600; // show "Checking…" only if the resume is slower than this
-  const state = { videoId: null, token: 0, resolving: false, lastBeat: 0 };
+  const ANCHOR_WAIT_MS = 2500; // the first jump waits at most this long for the transcript match
+  const CAPTIONS_TIMEOUT_MS = 15000;
+  const RECHECK_DELTA = 3; // s: a transcript match that moves the jump more than this corrects it
+  const MAX_WORDS = 60000;
+  const state = { videoId: null, token: 0, resolving: false, lastBeat: 0, lastJump: null };
   const settings = { onOpen: 'jump' }; // 'jump' | 'marker' (popup: "When you open an episode")
   const bound = new WeakSet();
 
@@ -176,6 +182,7 @@
   // The jump landed early or late: move the video, and teach the helper this show's offset.
   async function nudge(v, delta, actions) {
     const id = state.videoId || marker.videoId;
+    state.lastJump = null; // you corrected it by hand: a late transcript match must not move it again
     v.currentTime = Math.max(0, v.currentTime + delta);
     const r = await ask('nudge', { videoId: id, delta });
     if (!r?.saved) return toast('Could not save that for this show.', { actions, ms: 7000 });
@@ -186,18 +193,89 @@
       updateMarkerText();
       placeMarker();
     }
-    toast(offsetSentence(r.offset), { actions, ms: 7000 });
+    toast(r.scope === 'episode' ? 'Saved for this episode.' : offsetSentence(r.offset), { actions, ms: 7000 });
   }
 
   function jumpTo(v, time, label) {
     const before = v.currentTime;
     v.currentTime = time;
     const actions = [
-      { label: '−15 s', ariaLabel: 'Back 15 seconds, and remember it for this show', keepOpen: true, onClick: () => nudge(v, -15, actions) },
-      { label: '+15 s', ariaLabel: 'Forward 15 seconds, and remember it for this show', keepOpen: true, onClick: () => nudge(v, 15, actions) },
-      { label: 'Undo', ariaLabel: 'Undo the jump', onClick: () => (v.currentTime = before) },
+      { label: '−15 s', ariaLabel: 'Back 15 seconds, and remember it', keepOpen: true, onClick: () => nudge(v, -15, actions) },
+      { label: '+15 s', ariaLabel: 'Forward 15 seconds, and remember it', keepOpen: true, onClick: () => nudge(v, 15, actions) },
+      {
+        label: 'Undo',
+        ariaLabel: 'Undo the jump',
+        onClick: () => {
+          state.lastJump = null;
+          v.currentTime = before;
+        },
+      },
     ];
+    state.lastJump = { videoId: watchId(), v, time, actions };
     toast(`Resumed at ${label} from Apple Podcasts`, { actions, ms: 7000 });
+  }
+
+  // ---- transcript match (captions.js runs in the page and reads the captions) ----
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function captionsFromPage(videoId) {
+    return new Promise((resolve) => {
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      const finish = (r) => {
+        window.removeEventListener('message', onMessage);
+        clearTimeout(timer);
+        resolve(r);
+      };
+      const onMessage = (e) => {
+        const d = e.data;
+        if (e.source !== window || e.origin !== location.origin || !d || d.source !== 'podsync-main') return;
+        if (d.type === 'captions' && d.id === id && d.videoId === videoId) finish(d);
+      };
+      const timer = setTimeout(() => finish(null), CAPTIONS_TIMEOUT_MS);
+      window.addEventListener('message', onMessage);
+      window.postMessage({ source: 'podsync', type: 'captions', id, videoId }, location.origin);
+    });
+  }
+
+  const validWords = (words) =>
+    Array.isArray(words) &&
+    words.length <= MAX_WORDS &&
+    words.every(
+      (w) => Array.isArray(w) && w.length === 2 && Number.isFinite(w[0]) && w[0] >= 0 && w[0] < 86400 && typeof w[1] === 'string' && w[1].length <= 100
+    );
+
+  // Resolves to true when a new transcript match was made for this video.
+  async function anchor(id, token) {
+    const s = await ask('transcript', { videoId: id });
+    if (!s?.need || token !== state.token) return false;
+    const live = () => token === state.token && watchId() === id;
+    const ready = await waitFor(() => live() && video()?.readyState >= 1 && !adShowing(), 60000);
+    if (!ready || !live()) return false;
+    const r = await captionsFromPage(id);
+    if (!live() || !r) return false;
+    let words;
+    // No captions, or YouTube sent none: tell the helper, so it does not ask (and wait) again soon.
+    if (r.error === 'no_captions' || r.error === 'empty') words = [];
+    else if (validWords(r.words)) words = r.words;
+    else return false; // an ad started, the player was busy, …: try again next time
+    const up = await ask('captions', { videoId: id, words });
+    return !!up?.anchored;
+  }
+
+  // A transcript match arrived after the first jump: move the jump if it was off by more
+  // than RECHECK_DELTA, but only while its toast still shows and you did not touch it.
+  async function recheck(id, token) {
+    const r = await ask('resume', { videoId: id, currentTime: video()?.currentTime || 0, title: title() });
+    if (token !== state.token || r?.markerTime == null) return;
+    setMarker(id, r);
+    const jump = state.lastJump;
+    const showing = toastEl?.classList.contains('podsync-show') && toastEl.podsyncActions === jump?.actions;
+    if (!jump || jump.videoId !== id || !showing) return;
+    const delta = r.markerTime - jump.time;
+    if (Math.abs(delta) <= RECHECK_DELTA) return;
+    jump.v.currentTime = Math.max(0, jump.v.currentTime + delta);
+    jump.time = r.markerTime;
+    toast(`Resumed at ${r.markerLabel} from Apple Podcasts`, { actions: jump.actions, ms: 7000 });
   }
 
   // ---- "iPhone was here" marker on the progress bar -------------------------
@@ -348,6 +426,7 @@
     if (id === state.videoId) return;
     state.videoId = id;
     const token = ++state.token;
+    state.lastJump = null;
     hideToast();
     if (!id) return; // left the watch page: the mini player may still show this video, so keep its marker
     if (id !== marker.videoId) clearMarker();
@@ -358,6 +437,12 @@
       if (token !== state.token || !m?.matched) return;
 
       const busy = setTimeout(() => token === state.token && toast('Checking Apple Podcasts…', { ms: 0, busy: true }), BUSY_TOAST_MS);
+      // Usually answered at once ("no transcript" or "already matched"). A first match waits a
+      // little; if it is slower, jump with the show offset now and correct the jump when it lands.
+      const anchoring = anchor(id, token).catch(() => false);
+      const early = await Promise.race([anchoring, sleep(ANCHOR_WAIT_MS).then(() => null)]);
+      if (early === null) anchoring.then((fresh) => fresh && token === state.token && recheck(id, token));
+      if (token !== state.token) return clearTimeout(busy);
       const r = await ask('resume', { videoId: id, currentTime: video()?.currentTime || 0, title: title() });
       clearTimeout(busy);
       if (token !== state.token) return;
@@ -374,7 +459,8 @@
 
       if (settings.onOpen === 'marker') {
         toast(`Played on iPhone ${ago(r.lastPlayed)}`, {
-          actions: [{ label: `Jump to ${r.label}`, onClick: () => jumpTo(v, r.time, r.label) }],
+          // The marker holds the newest spot (a late transcript match may have moved it).
+          actions: [{ label: `Jump to ${r.label}`, onClick: () => (marker.videoId === id ? jumpTo(v, marker.time, marker.label) : jumpTo(v, r.time, r.label)) }],
           ms: 10000,
         });
         return;
