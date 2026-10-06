@@ -65,6 +65,7 @@ class ServiceTest(unittest.TestCase):
         self.cfg = config.Config(shows=[config.Show("David Senra", [SENRA], [COLLECTION])])
         self.cfg.handoff_dir = self.tmp / "handoff"
         self.cfg.state_dir = self.tmp / "state"
+        self.cfg.transcripts_dir = self.tmp / "ttml"  # never the real Apple Podcasts cache
         self.db = FakeDB([episode()])
         self.app = FakeApp(self.db)
         self.meta = VideoMeta(

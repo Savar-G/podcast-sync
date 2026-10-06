@@ -14,6 +14,8 @@ from typing import Dict, List, Optional
 HOME = Path.home()
 
 PODCASTS_DB = HOME / "Library/Group Containers/243LU875E5.groups.com.apple.podcasts/Documents/MTLibrary.sqlite"
+# Word-timed transcripts that Apple Podcasts downloaded (features/transcript_anchoring.py). Read-only.
+PODCASTS_TTML = HOME / "Library/Group Containers/243LU875E5.groups.com.apple.podcasts/Library/Cache/Assets/TTML"
 # Files here sync to the iPhone, and the Shortcut's "Get File" action reads paths relative to it.
 SHORTCUTS_ICLOUD_DIR = HOME / "Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents"
 DEFAULT_HANDOFF_DIR = SHORTCUTS_ICLOUD_DIR / "podcast-sync"
@@ -46,6 +48,7 @@ class Config:
     extension_ids: List[str] = field(default_factory=lambda: [EXTENSION_ID])
     shows: List[Show] = field(default_factory=list)
     db_path: Path = PODCASTS_DB
+    transcripts_dir: Path = PODCASTS_TTML
     handoff_dir: Path = DEFAULT_HANDOFF_DIR
     state_dir: Path = DEFAULT_STATE_DIR
 
@@ -67,7 +70,7 @@ def load(path: Optional[Path] = None) -> Config:
     raw: Dict = json.loads(path.read_text()) if path.exists() else {}
     shows = [Show(**s) for s in raw.pop("shows", [])]
     cfg = Config(shows=shows, **{k: v for k, v in raw.items() if k in Config.__dataclass_fields__ and k != "shows"})
-    for env, attr in (("PODSYNC_HANDOFF_DIR", "handoff_dir"), ("PODSYNC_STATE_DIR", "state_dir")):
+    for env, attr in (("PODSYNC_HANDOFF_DIR", "handoff_dir"), ("PODSYNC_STATE_DIR", "state_dir"), ("PODSYNC_TRANSCRIPTS_DIR", "transcripts_dir")):
         if os.environ.get(env):
             setattr(cfg, attr, Path(os.environ[env]))
     if os.environ.get("PODSYNC_PORT"):

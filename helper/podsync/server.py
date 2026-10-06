@@ -62,12 +62,15 @@ def make_handler(service: SyncService, extension_ids: Iterable[str], port: int):
         def do_POST(self):
             if not self._trusted():
                 return self._send(403, {"error": "forbidden"})
-            handler = service.handlers.get(self.path.lstrip("/"))
+            name = self.path.lstrip("/")
+            handler = service.handlers.get(name)
             if handler is None:
                 return self._send(404, {"error": "not found"})
             try:
                 length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_BODY:
+                if length < 0:
+                    raise ValueError
+                if length > getattr(service, "body_limits", {}).get(name, MAX_BODY):
                     return self._send(413, {"error": "too large"})
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(body, dict):

@@ -5,17 +5,34 @@ video, you press +15 s: the video runs 15 s ahead of the audio, so the show's le
 offset grows by 15 s. Each press counts once, and the sum per show (collection_id) is
 kept in state.data["offsets"], clamped to +-MAX_LEARNED. service._offset() adds it to the
 configured offset, so it applies both ways: the YouTube jump and the iPhone link.
+
+When the video is lined up by transcript (features/transcript_anchoring.py), that
+feature takes the press instead and keeps it for the episode, not the show.
 """
 from __future__ import annotations
 
 import math
 import re
-from typing import Dict
+from typing import Dict, Tuple
 
 from ..service import BadRequest
 
 MAX_LEARNED = 600.0  # seconds, either way
 MAX_DELTA = 60.0  # one press
+
+
+def parse_nudge(body: Dict) -> Tuple[str, float]:
+    """Validate a {videoId, delta} body. Shared with transcript_anchoring's per-episode nudge."""
+    video_id = str(body.get("videoId") or "")
+    if not re.fullmatch(r"[\w-]{11}", video_id):
+        raise BadRequest("bad videoId")
+    try:
+        delta = float(body["delta"])
+    except (KeyError, TypeError, ValueError):
+        raise BadRequest("delta required")
+    if not math.isfinite(delta) or delta == 0 or abs(delta) > MAX_DELTA:
+        raise BadRequest(f"delta must be non-zero, at most {MAX_DELTA:g} s")
+    return video_id, delta
 
 
 def register(service) -> None:
@@ -25,16 +42,7 @@ def register(service) -> None:
         return float(state.data.get("offsets", {}).get(str(collection_id), 0.0))
 
     def nudge(body: Dict) -> Dict:
-        video_id = str(body.get("videoId") or "")
-        if not re.fullmatch(r"[\w-]{11}", video_id):
-            raise BadRequest("bad videoId")
-        try:
-            delta = float(body["delta"])
-        except (KeyError, TypeError, ValueError):
-            raise BadRequest("delta required")
-        if not math.isfinite(delta) or delta == 0 or abs(delta) > MAX_DELTA:
-            raise BadRequest(f"delta must be non-zero, at most {MAX_DELTA:g} s")
-
+        video_id, delta = parse_nudge(body)
         entry = state.video(video_id)  # only videos we matched before: no network here
         if not entry or not entry.get("collection_id"):
             return {"saved": False, "reason": "not_matched"}
@@ -47,6 +55,7 @@ def register(service) -> None:
             state.save()
         return {
             "saved": True,
+            "scope": "show",
             "show": entry.get("show"),
             "learned": value,
             "offset": service._offset(entry["collection_id"]),
