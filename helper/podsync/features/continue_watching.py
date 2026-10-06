@@ -13,10 +13,15 @@ that misses the budget keeps running and fills the match cache for next time.
 Body: {} or {"refresh": true}. With refresh, the helper first lets the Podcasts
 app pull iCloud play state once (for the newest episode), which takes a few
 seconds; the popup asks for that only after it shows the fast answer.
+
+"hidden": {"<trackId>": <lastPlayed unix>} lists episodes you hid in the popup.
+They stay out of the list until you play them again (a newer lastPlayed), and
+the next recent episodes fill their places. The popup keeps this list itself.
 """
 from __future__ import annotations
 
 import logging
+import math
 import re
 import threading
 import time
@@ -37,6 +42,7 @@ RECENT_DAYS = 14
 MIN_PLAYHEAD = 60
 END_MARGIN = 60
 MAX_ROWS = 5
+MAX_HIDDEN = 200  # entries accepted in one request; the popup prunes old ones
 CANDIDATE_DAYS = 10  # uploads this close to the episode's publish date
 MAX_CANDIDATES = 6  # per episode, best first
 BUDGET_SECONDS = 6.0
@@ -82,6 +88,29 @@ def artwork_url(template: Optional[str], size: int = ARTWORK_SIZE) -> Optional[s
     if u.scheme != "https" or not (u.hostname or "").endswith(".mzstatic.com"):
         return None
     return template.replace("{w}", str(size)).replace("{h}", str(size)).replace("{c}", "bb").replace("{f}", "jpg")
+
+
+def parse_hidden(raw) -> Dict[int, float]:
+    """{"<trackId>": lastPlayed} from the popup, validated. Missing means nothing is hidden."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or len(raw) > MAX_HIDDEN:
+        raise BadRequest(f"hidden must be an object with at most {MAX_HIDDEN} entries")
+    out = {}
+    for key, last_played in raw.items():
+        if not (isinstance(key, str) and key.isdigit() and len(key) <= 20):
+            raise BadRequest("hidden keys must be track ids")
+        if isinstance(last_played, bool) or not isinstance(last_played, (int, float)) or not math.isfinite(last_played):
+            raise BadRequest("hidden values must be numbers")
+        out[int(key)] = float(last_played)
+    return out
+
+
+def is_hidden(ep: Episode, hidden: Dict[int, float]) -> bool:
+    """Hidden until you play the episode again: a lastPlayed newer than when you hid it."""
+    if ep.track_id not in hidden:
+        return False
+    return (ep.last_played or 0) <= hidden[ep.track_id] + 1  # 1 s of slack for float round trips
 
 
 def search_url(show: str, title: str) -> str:
@@ -131,13 +160,21 @@ class ContinueWatching:
         refresh = body.get("refresh", False)
         if not isinstance(refresh, bool):
             raise BadRequest("refresh must be true or false")
-        return self.recent(refresh=refresh)
+        return self.recent(refresh=refresh, hidden=parse_hidden(body.get("hidden")))
 
-    def recent(self, refresh: bool = False) -> Dict:
+    def recent(self, refresh: bool = False, hidden: Optional[Dict[int, float]] = None) -> Dict:
         db = self.service.db
         since = self.clock() - RECENT_DAYS * 86400
+        hidden = hidden or {}
+        # Ask for extra rows, so hidden episodes leave room for the next ones.
+        limit = MAX_ROWS + min(len(hidden), 20)
+
+        def visible() -> List[Episode]:
+            rows = db.recently_played(since, MIN_PLAYHEAD, END_MARGIN, limit)
+            return [e for e in rows if not is_hidden(e, hidden)][:MAX_ROWS]
+
         try:
-            eps = db.recently_played(since, MIN_PLAYHEAD, END_MARGIN, MAX_ROWS)
+            eps = visible()
         except Exception as e:  # sqlite3.Error, or macOS has not allowed access yet
             log.warning("cannot list recent episodes: %s", e)
             return {"episodes": [], "error": "library_unreadable"}
@@ -147,7 +184,7 @@ class ContinueWatching:
             # updates every episode, not just this one. Per-row refreshes would take minutes.
             try:
                 self.service.app.refresh(eps[0].track_id)
-                eps = db.recently_played(since, MIN_PLAYHEAD, END_MARGIN, MAX_ROWS)
+                eps = visible()
                 refreshed = True
             except Exception as e:
                 log.warning("Podcasts refresh failed: %s", e)

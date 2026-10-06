@@ -34,7 +34,7 @@ Podcast Sync does this for you, in both directions.
 
   <img src="docs/toast-nudge.png" alt="Message: Saved. This show's video runs 15 s ahead of the audio. Buttons: −15 s, +15 s, Undo" width="580">
 
-- **Continue on YouTube.** Click the Podcast Sync icon in Chrome. It lists the episodes you played lately on your iPhone. Click **Watch from 40:30** to open the video at that time.
+- **Continue on YouTube.** Click the Podcast Sync icon in Chrome. It lists the episodes you played lately on your iPhone. Click **Watch from 40:30** to open the video at that time. To remove an episode from the list, click its **×**. It stays hidden until you play it again.
 - **Progress on thumbnails.** On the YouTube home page and in search results, a thin purple bar under a video shows how far you got in Apple Podcasts.
 - **Your choice.** If you do not want the video to jump by itself, click the Podcast Sync icon and choose **Only show the marker**.
 

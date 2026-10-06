@@ -78,7 +78,25 @@
       }
       .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
       .meta { flex: 1; min-width: 0; }
-      .kicker { display: flex; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; white-space: nowrap; }
+      .kicker { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; white-space: nowrap; }
+      .hide {
+        flex: none; margin: -4px -5px -4px auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
+        display: grid; place-items: center; color: var(--muted); background: transparent; cursor: pointer;
+        transition: background-color 0.15s, color 0.15s;
+      }
+      .hide:hover { color: var(--text); background: var(--neutral-bg); }
+      .hide svg { display: block; width: 9px; height: 9px; }
+      .item.leaving { opacity: 0; transform: translateX(10px); transition: opacity 0.16s ease, transform 0.16s ease; }
+      .undo {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;
+        padding: 5px 6px 5px 10px; border-radius: 8px; background: var(--fill); font-size: 12px; color: var(--muted);
+      }
+      .undo[hidden] { display: none; }
+      .undo button {
+        flex: none; border: 0; border-radius: 6px; padding: 2px 8px; background: none; cursor: pointer;
+        font: 600 12px/1.4 system-ui, -apple-system, sans-serif; color: var(--tint-text);
+      }
+      .undo button:hover { background: var(--tint-bg); }
       .show { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .ago { flex: none; }
       .title {
@@ -126,7 +144,7 @@
 
       @media (prefers-reduced-motion: reduce) {
         .skeleton .art, .skeleton .line { animation: none; }
-        .watch, .updating { transition: none; }
+        .watch, .updating, .hide, .item.leaving { transition: none; }
         .watch:active { transform: none; }
       }
     </style>
@@ -143,6 +161,7 @@
       </div>
       <ul id="recent" aria-labelledby="continue-heading"></ul>
       <div id="recent-note"></div>
+      <div id="undo" class="undo" hidden><span id="undo-text"></span><button type="button" id="undo-btn">Undo</button></div>
       <p id="recent-status" class="sr-only" role="status" aria-live="polite"></p>
     </section>
 

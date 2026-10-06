@@ -248,6 +248,27 @@ class RowTest(Base):
         with self.assertRaises(BadRequest):
             self.svc.handlers["recent"]({"refresh": "yes"})
 
+    def test_hidden_episodes_leave_room_for_the_next_ones(self):
+        for i in range(2, 8):  # 7 episodes, newest first: 1, 2, ... 7
+            self.db.rows[i] = ep(i, last_played=NOW - 3600 * i)
+        self.assertEqual([r["trackId"] for r in self.recent()], [1, 2, 3, 4, 5])
+        hidden = {1: NOW - 3600, 3: NOW - 3 * 3600}
+        self.assertEqual([r["trackId"] for r in self.recent(hidden=hidden)], [2, 4, 5, 6, 7])
+
+    def test_hidden_episode_comes_back_when_played_again(self):
+        hidden = {1: NOW - 3600}
+        self.assertEqual(self.recent(hidden=hidden), [])
+        self.db.rows[1] = ep(1, last_played=NOW - 60)  # played again on the iPhone
+        self.assertEqual([r["trackId"] for r in self.recent(hidden=hidden)], [1])
+
+    def test_hidden_is_validated(self):
+        handle = self.svc.handlers["recent"]
+        self.assertEqual(handle({"hidden": {"1": NOW - 3600}})["episodes"], [])
+        self.assertEqual(len(handle({"hidden": {}})["episodes"]), 1)
+        for bad in (["1"], {"x": 1}, {"1": "soon"}, {"1": True}, {"1": float("nan")}, {str(i): 1 for i in range(201)}):
+            with self.assertRaises(BadRequest, msg=repr(bad)[:40]):
+                handle({"hidden": bad})
+
     def test_unreadable_library(self):
         def boom(*a, **k):
             raise sqlite3.OperationalError("authorization denied")
